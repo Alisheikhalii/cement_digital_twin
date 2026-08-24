@@ -1,0 +1,285 @@
+# =============================================================================
+# configs/optimization.yaml
+# Synthetic Cement Plant Digital Twin - Demonstration Environment.
+# PRD v1.1.1 Sections 14 (optimization architecture), 14.2 (hard constraints +
+# soft multi-objective), 14.3 (envelope / OOD protection), 14.5 (baselines),
+# 14.6 (rule engine), 16 (what-if bounds and modes).
+#
+# Hard constraints live in their OWN block and are evaluated as a pass/fail filter -
+# they are never mirrored as penalty terms inside `objective.weights` (PRD 14.2:
+# "so they can never be traded away for a better objective score").
+# Every numeric is an ASSUMPTION pending real-plant calibration (NFR-8).
+# =============================================================================
+
+meta:
+  prd_version: "1.1.1"
+
+# --- Manipulated (decision) variables, PRD 16.1 ---------------------------------------
+# `range` is the absolute physical envelope (matches configs/*_dynamics.yaml
+# operating_ranges); `step` is the what-if slider granularity (PRD 17 sliders).
+# Fuel variables are expressed as a ratio of the energy-balance-derived reference rate,
+# consistent with configs/kiln_dynamics.yaml operating_ranges (see SIMULATION_ASSUMPTIONS.md
+# "Documentation-range deviations").
+decision_variables:
+  kiln_fuel_rate_tph:
+    unit: "t/h"
+    ratio_of_reference: [0.80, 1.20]     # ASSUMPTION
+    step_pct_of_current: 0.5             # ASSUMPTION slider granularity
+  ID_fan_speed:
+    unit: "%"
+    range: [60.0, 95.0]                  # PRD 12.1
+    step: 0.5                            # ASSUMPTION
+  kiln_feed_rate_tph:
+    unit: "t/h"
+    range: [150.0, 230.0]                # PRD 12.1
+    step: 1.0                            # ASSUMPTION
+  kiln_speed_rpm:
+    unit: "rpm"
+    range: [2.8, 4.5]                    # PRD 12.1
+    step: 0.05                           # ASSUMPTION
+  separator_speed_rpm:
+    unit: "rpm"
+    range: [60.0, 140.0]                 # PRD 12.2
+    step: 1.0                            # ASSUMPTION
+  mill_feed_rate_tph:
+    unit: "t/h"
+    range: [80.0, 170.0]                 # PRD 12.2
+    step: 1.0                            # ASSUMPTION
+
+# --- Modes (PRD 14.3 / 16.1) -----------------------------------------------------------
+modes:
+  normal:
+    max_delta_fraction: 0.10             # PRD 14.2/14.3/16.1: |dSetpoint| <= 10 % of current
+    enforce_envelope: true               # PRD 14.3 checks 1-4 all enforced
+  experimental:
+    max_delta_fraction: 0.30             # ASSUMPTION exploration bound for the UI sliders
+    enforce_envelope: false              # PRD 16.1: may leave the calibrated envelope;
+                                         # the fixed low-reliability banner is then mandatory
+                                         # (text: src/labels.py OUTSIDE_ENVELOPE_BANNER)
+
+# --- Production / quality targets the hard constraints are evaluated against ------------
+targets:
+  production_target_tph: 119.7           # ASSUMPTION = reference kiln feed 190 t/h x clinker
+                                         # factor 0.63 (PRD 9.3); inside PRD 12.1 band 95-150
+  production_tolerance_fraction: 0.01    # PRD 14.2 tol = 1 %
+  blaine_target_cm2_g: 3400.0            # ASSUMPTION mid of PRD 12.2 band 2900-4200
+  blaine_tolerance_cm2_g: 150.0          # ASSUMPTION product-quality spec window
+  residue_max_percent: 14.0              # ASSUMPTION inside PRD 12.2 band 6-18 %
+
+# --- Hard constraints (PRD 14.2 table). Pass/fail pre-filter only. ---------------------
+hard_constraints:
+  clinker_production_tph:
+    min_from_target: true                # >= production_target x (1 - tolerance)
+  burning_zone_temperature: {min: 1420.0, max: 1480.0}   # PRD 14.2
+  oxygen_percent:           {min: 1.0,    max: 3.5}      # PRD 14.2
+  CO_ppm:                   {max: 200.0}                 # PRD 14.2
+  simulated_blaine_cm2_g:
+    from_target: true                    # [blaine_target - tol, blaine_target + tol]
+  residue_percent:
+    max_from_target: true                # <= residue_max_percent
+  # Rated equipment limits (PRD 14.2 last-but-one row). ASSUMPTION: the top of each
+  # PRD 12.1/12.2 documented band is treated as the rated limit.
+  equipment_limits:
+    mill_differential_pressure: {max: 90.0}    # mbar
+    mill_motor_power_kw:        {max: 5500.0}
+    mill_current:               {max: 420.0}   # A
+    mill_outlet_temperature:    {max: 120.0}   # C
+    mill_vibration:             {max: 10.0}    # mm/s
+    fan_power_kw:               {max: 1200.0}
+    separator_current:          {max: 80.0}    # A
+    ID_fan_power:               {max: 2200.0}
+    ID_fan_current:             {max: 260.0}   # A
+    kiln_motor_current:         {max: 180.0}   # A
+    cooler_fan_power:           {max: 1100.0}
+    vibration:                  {max: 8.0}     # mm/s (kiln)
+    bearing_temperature:        {max: 75.0}    # C
+
+# --- Soft, weighted multi-objective (PRD 14.2). Lower objective = better. --------------
+objective:
+  weights:                               # ASSUMPTION documented typical priority balance:
+    w_thermal: 0.35                      # fuel (thermal) energy dominates cement cash cost
+    w_electric: 0.20                     # electrical energy second
+    w_production: 0.20                   # production commitment
+    w_quality: 0.15                      # Blaine / residue spec
+    w_stability: 0.05                    # setpoint-move / variability discipline
+    w_emission: 0.05                     # CO / NOx / SO2 / CO2
+  # Delta terms are normalized to PERCENT CHANGE vs. the baseline state so the weights are
+  # dimensionless and comparable (ASSUMPTION).
+  normalization: relative_percent
+  # Penalties are exactly zero inside a comfort band = the hard band shrunk by
+  # `soft_margin_fraction` of its half-width, then rise quadratically toward the hard
+  # bound - PRD 14.2 "rise smoothly only as a candidate approaches (but does not cross)".
+  soft_margin_fraction: 0.25             # ASSUMPTION
+  penalty_exponent: 2.0                  # ASSUMPTION quadratic approach penalty
+  stability:
+    setpoint_move_weight: 1.0            # ASSUMPTION penalty per 1 % total setpoint travel
+    predicted_variability_weight: 0.5    # ASSUMPTION penalty on cross-horizon spread
+  emission:
+    tags: [CO_ppm, NOx_ppm, SO2_ppm]     # ASSUMPTION emission penalty basket
+    reference_ppm: {CO_ppm: 200.0, NOx_ppm: 900.0, SO2_ppm: 400.0}   # PRD 12.1 band tops
+
+# --- Envelope / OOD protection (PRD 14.3, five ordered checks) -------------------------
+envelope:
+  training_range_source: "models/registry.json"   # PRD 14.3 check 1 / PRD 13.4
+  training_range_margin_fraction: 0.0     # ASSUMPTION: no slack beyond the recorded range
+  ood:                                    # PRD 14.3 check 2 (Model B Isolation Forest)
+    reject_score_percentile: 2.0          # matches configs/ml.yaml anomaly.ood_threshold_percentile
+    flag_score_percentile: 10.0           # ASSUMPTION: borderline -> FLAGGED_FOR_REVIEW
+  flag_instead_of_reject_when_borderline: true   # PRD 14.3 implementer discretion, documented
+
+# --- Candidate search (PRD 14.1). Coordinate grid + sampled candidates, sized for the
+# NFR-2 "< 3 s what-if / recommendation round trip" budget on Colab CPU.
+#
+# MEASURED sizing basis (this is why the numbers below are what they are). One settled
+# candidate costs one `to_steady_state(..., 240 min)` solve per affected unit, timed on the
+# reference operating point of `PlantTwin`: kiln 1.7 ms, cement mill 0.5 ms. PRD
+# 8.3 decouples the two lines through the clinker silo, so `src/optimization/optimizer.py`
+# memoizes each unit's solve on its own setpoint subset and a candidate that moves only the
+# mill never re-solves the kiln (asserted exactly, not assumed, by
+# tests/test_optimization.py::TestCandidateEvaluation::test_unit_composition_matches_plant).
+#
+# MEASURED NFR-2 position, on the reference operating point with a 240-row history, both
+# Model A bundles (28 horizon models) and both Model B forests loaded:
+#   * ONE what-if round trip - simulate + envelope/OOD gate + predict all 28 horizon models
+#     = 1.71 s. This is the operation NFR-2 names ("a single what-if scenario
+#     simulate+predict+optimize round trip"), and it is inside the 3 s budget.
+#   * ONE full optimizer search over 52 candidates = 2.94-3.07 s warm (4.1-4.7 s on the very
+#     first call in a process, which is sklearn/numpy import warm-up, not search cost).
+#     The two irreducible components are Model A - 28 horizon models, each walking a
+#     120-tree forest for the value, a second family for the disagreement and a 20-member
+#     bootstrap or 120-tree spread for the uncertainty = 1.65 s - and Model B check 2, whose
+#     200-tree Isolation Forest costs 36 ms for ONE row (35 ms for forty: the cost is the
+#     per-tree walk, not the row count) x ~40 distinct candidate rows = 1.4 s.
+#     DEVIATION, documented rather than tuned away: the full search therefore sits AT the
+#     3 s budget rather than under it. Neither component can be reduced without changing an
+#     approved model - Model A's family/ensemble structure (PRD 13.1/13.1.1) or Model B's
+#     `anomaly.isolation_forest.n_estimators` (PRD 13.2, Task 4 approved) - and PRD 14 is
+#     explicit that models are not to be reshaped to suit the optimizer. Reducing the search
+#     instead was MEASURED and does not help: n_random_candidates 16 -> 12 -> 8 moves the
+#     warm figure only 3.07 -> 3.01 -> 2.94 s (the coordinate grid, not the random draws,
+#     supplies most candidates) and selects the identical winner with a smaller searched
+#     space, so the search size is left at the value that searches the most.
+#     Two things make the measurement honest rather than a failure to optimize: identical
+#     scores are never recomputed (both the unit-solve memo and the Model B row memo are
+#     pure-function caches - see `_MemoScorer` in src/optimization/envelope.py), and every
+#     estimator the optimizer holds is pinned to `n_jobs = 1`, which MEASURED 1.65 s vs
+#     2.64 s against the trained `n_jobs: -1` setting: for single-row prediction the thread
+#     pool costs more than it saves, so bit-reproducibility here is free rather than paid for.
+#
+# REVISED from the values first written in Task #1, for NFR-2 - and for no other reason:
+#   n_random_candidates 240 -> 16  (240 draws alone is ~14 s, ~4.5x the NFR-2 budget)
+#   polish.enabled  true -> false  (differential_evolution needs >= popsize*ndim*maxiter
+#                                   ~= 288 twin solves; with the check-2 cost above that is
+#                                   far past the budget, so the stage is off by default and
+#                                   documented as offline-only rather than left on and
+#                                   silently blowing the budget)
+# Nothing here is a constraint, a threshold or a physical assumption: these knobs change how
+# much of the candidate space is searched, never which candidates are admissible.
+search:
+  delta_grid_fractions: [-0.10, -0.05, -0.025, 0.0, 0.025, 0.05, 0.10]  # ASSUMPTION
+  max_coordinate_variables: 2            # ASSUMPTION: grid over <=2 variables jointly
+  coordinate_passes: 2                   # ASSUMPTION: pass 1 moves one variable, pass 2 adds a
+                                         # second to the best pass-1 move. Must be <=
+                                         # max_coordinate_variables (validated on load).
+  n_random_candidates: 16                # ASSUMPTION random draws over <=2 variables, seeded
+  max_unit_solves: 64                    # ASSUMPTION deterministic NFR-2 backstop: the search
+                                         # stops enumerating after this many unit solves and
+                                         # *reports* what it skipped (never silently truncates)
+  random_state: 42
+  steady_state:
+    max_minutes: 240                      # ASSUMPTION cap for Twin.to_steady_state. MEASURED:
+                                          # 240 min reproduces the 480 min endpoint to 2.4e-3 of
+                                          # a tag unit; 120 min is still 1.33 short on the
+                                          # slowest preheater lag, so 240 is the floor, not a
+                                          # comfort margin.
+    tolerance_relative: 0.0005            # ASSUMPTION convergence tolerance used by the
+                                          # optimizer's own settled-state comparisons (the twins
+                                          # keep their own tighter internal tolerance)
+  polish:
+    # Optional SciPy refinement over ALL decision variables jointly - the one thing the coordinate
+    # grid structurally cannot do, since max_coordinate_variables caps it at two moving together.
+    # Implemented in src/optimization/optimizer.py::Optimizer._polish, which snaps every proposal
+    # onto the same step grid and puts it through the same PRD 14.3 gate, so the stage can propose
+    # but never admit.
+    # MEASURED with max_unit_solves temporarily raised to 400 so the stage ran to completion:
+    # 128 distinct proposals (two generations; init="sobol" rounds popsize*ndim = 36 up to 64),
+    # +28 unit solves beyond the grid's 41, 6.37 s vs 4.45 s with the stage off - and ZERO of the
+    # 128 accepted by the gate, because each moved all six variables at once and an arbitrary
+    # six-variable move at the reference point always leaves the Blaine window or the production
+    # tolerance. Same winner, same score, either way.
+    enabled: false                        # REVISED true -> false. Two independent measured reasons:
+                                          # it is far past the NFR-2 budget, AND on this synthetic
+                                          # plant it finds nothing the grid did not. Kept wired and
+                                          # tested rather than deleted - PRD 24 names the method and
+                                          # a wider calibrated envelope is where a joint search
+                                          # would begin to pay.
+    method: differential_evolution        # scipy, already a dependency (NFR-5)
+    maxiter: 8                            # ASSUMPTION
+    popsize: 6                            # ASSUMPTION
+    tol: 0.01                             # ASSUMPTION
+    seed: 42
+    time_budget_s: 1.2                    # ASSUMPTION keeps the round trip under NFR-2. Honoured at
+                                          # a generation boundary (SciPy only consults the callback
+                                          # between generations), so the first population is always
+                                          # paid for in full.
+
+# --- What-if simulation (PRD 16.2/16.3) ------------------------------------------------
+# The transition trajectory exists to satisfy one explicit PRD 16.2 requirement: the panel must
+# show "the actual dead-time + lag - NOT an instantaneous jump". Every setpoint ramp uses the
+# Scenario Scheduler's own ramp time (configs/scenarios.yaml ramp_times_min, reached through
+# src.simulation.scheduler.SetpointSpec) rather than a second table, and the delayed response is
+# whatever each relationship's configured DelayedResponse produces - nothing here shapes it.
+what_if:
+  dt_seconds: 60                # PRD 12 native 1 min cadence, same as scenarios.simulation
+  hold_minutes: 15              # ASSUMPTION pre-move baseline segment, so the chart shows the
+                                # level the plant was holding and the dead time is visible as a
+                                # flat stretch AFTER the setpoint has already started moving
+  trajectory_minutes: 240       # ASSUMPTION post-move window. Same 240 min as
+                                # search.steady_state.max_minutes for the same MEASURED reason:
+                                # the slowest preheater lag is not finished at 120 min.
+  endpoint_tolerance_relative: 0.01   # ASSUMPTION: how far the trajectory's last row may sit from
+                                # the settled state before the panel says so. The two are computed
+                                # by different routes on purpose (simulate_scenario vs
+                                # to_steady_state) and the agreement is REPORTED, never assumed.
+
+# --- Five-way baseline comparison (PRD 14.5) ------------------------------------------
+baselines:
+  historical_window_hours: 24            # PRD 14.5 item 2 "trailing 24h"
+  best_comparable:
+    window_minutes: 60                   # ASSUMPTION averaging window for a candidate window
+    production_match_tolerance_fraction: 0.02   # ASSUMPTION "same production target"
+    require_same_regime: true             # PRD 14.5 item 3
+    rank_metric: thermal_energy_kcal_per_kg_clinker   # ASSUMPTION "best observed"
+  metrics:                                # PRD 14.5 "all five reported with the same metric set"
+    - thermal_energy_kcal_per_kg_clinker
+    - specific_power_consumption_kwh_t
+    - clinker_production_tph
+    - cement_production_tph
+    - simulated_blaine_cm2_g
+    - residue_percent
+    - burning_zone_temperature
+    - oxygen_percent
+    - CO_ppm
+
+# --- Rule engine (PRD 14.6): the ONLY place if/else logic may stand in for a
+# recommendation. Also the Digital Twin Baseline comparator of PRD 14.5 item 4.
+rule_engine:
+  thresholds:                            # ASSUMPTION, all inside the PRD 12 bands
+    oxygen_low_pct: 1.0
+    oxygen_high_pct: 3.5
+    CO_rising_ppm_per_min: 5.0
+    CO_high_ppm: 200.0
+    burning_zone_low_C: 1420.0
+    burning_zone_high_C: 1480.0
+    mill_differential_pressure_high_mbar: 80.0
+    mill_differential_pressure_low_mbar: 30.0
+    vibration_high_mm_s: 7.0
+    bearing_temperature_high_C: 70.0
+    blaine_low_cm2_g: 3250.0
+    blaine_high_cm2_g: 3550.0
+  actions:                               # ASSUMPTION corrective step sizes (fractions of current)
+    fuel_step_fraction: 0.02
+    id_fan_step_fraction: 0.02
+    feed_step_fraction: 0.02
+    separator_step_fraction: 0.03
+    mill_feed_step_fraction: 0.03

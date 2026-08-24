@@ -1,0 +1,229 @@
+# =============================================================================
+# configs/ml.yaml
+# Synthetic Cement Plant Digital Twin - Demonstration Environment.
+# PRD v1.1.1 Sections 13 (ML architecture), 13.1.1 (uncertainty / Recommendation
+# Quality), 13.2 (anomaly detection), 13.3 (leakage prevention), 22 (evaluation).
+# scikit-learn only - no new heavy dependency (NFR-5).
+# =============================================================================
+
+meta:
+  prd_version: "1.1.1"
+
+# --- Model A: multi-horizon process prediction (PRD 13.1) ------------------------------
+prediction:
+  horizons_min: [5, 10, 15, 30]          # PRD 13.1 mandatory default horizons
+  targets:
+    kiln:
+      - burning_zone_temperature
+      - oxygen_percent
+      - clinker_production_tph
+      - thermal_energy_kcal_per_kg_clinker
+    mill:
+      - mill_motor_power_kw
+      - simulated_blaine_cm2_g
+      - specific_power_consumption_kwh_t
+
+features:
+  lags_min: [1, 5, 15]                   # PRD 13.1 current + t-1 / t-5 / t-15 min
+  include_operating_regime: true          # one-hot categorical (PRD 13.1)
+  # PRD 13.1 requires the per-horizon feature set to be "sized appropriately per horizon".
+  # ASSUMPTION - the documented sizing rule (src/features/lag_features.py):
+  #   horizon_scaled: lag k is used for horizon h iff k <= h, always keeping the shortest lag.
+  #                   -> t+5/t+10 get {1, 5}; t+15/t+30 get {1, 5, 15}.
+  #   all:            every configured lag for every horizon (kept for comparison/tests).
+  lag_sizing: horizon_scaled
+  ffill_limit_min: 5                     # ASSUMPTION: sensor dropout (PRD 11.5) leaves gaps in the
+                                         # historian; they are closed with a *causal* forward fill of
+                                         # at most this many minutes (a real DCS holds the last good
+                                         # value). Rows still incomplete afterwards are dropped.
+  # Manipulated variables and correlated process variables per unit. Target-derived
+  # features are never added (tested by tests/test_features_ml.py).
+  kiln_inputs:
+    - kiln_feed_rate_tph
+    - kiln_fuel_rate_tph
+    - calciner_fuel_rate_tph
+    - kiln_speed_rpm
+    - ID_fan_speed
+    - raw_meal_moisture
+    - raw_meal_temperature
+  kiln_process:
+    - burning_zone_temperature
+    - oxygen_percent
+    - CO_ppm
+    - preheater_outlet_temperature
+    - calciner_temperature
+    - exhaust_gas_flow
+    - preheater_pressure
+    - clinker_production_tph
+    - thermal_energy_kcal_per_kg_clinker
+  mill_inputs:
+    - mill_feed_rate_tph
+    - clinker_feed_rate
+    - gypsum_feed_rate
+    - additive_feed_rate
+    - separator_speed_rpm
+    - fan_speed
+  mill_process:
+    - mill_motor_power_kw
+    - mill_differential_pressure
+    - simulated_blaine_cm2_g
+    - residue_percent
+    - gas_flow
+    - cement_production_tph
+    - specific_power_consumption_kwh_t
+
+# --- Model families (PRD 13.1). RandomForest is always trained as the baseline; the
+# better held-out MAE wins per (target, horizon) pair.
+models:
+  random_forest:
+    n_estimators: 120                    # ASSUMPTION Colab-CPU budget (NFR-1/NFR-3)
+    max_depth: 14                        # ASSUMPTION
+    min_samples_leaf: 4                  # ASSUMPTION
+    random_state: 42
+    n_jobs: -1
+  gradient_boosting:
+    n_estimators: 150                    # ASSUMPTION
+    max_depth: 3                         # ASSUMPTION
+    learning_rate: 0.08                  # ASSUMPTION
+    subsample: 0.9                       # ASSUMPTION
+    random_state: 42
+  lightgbm:
+    enabled: false                       # PRD 13.1 optional stretch model: only promoted if
+                                         # it measurably beats both sklearn baselines
+    n_estimators: 300
+    learning_rate: 0.05
+    num_leaves: 31
+    random_state: 42
+  selection_metric: mae                  # PRD 13.1 "selected by held-out MAE"
+
+training:
+  max_rows: 20000                        # ASSUMPTION row cap (chronological stride subsample)
+                                         # keeps the 84 fits of a full run inside the Colab-CPU
+                                         # budget (NFR-3): 28 (target, horizon) pairs x 2 families
+                                         # for the chronological split + 28 re-fits of the selected
+                                         # family for the scenario-holdout split (PRD 13.3 withholds
+                                         # the regimes from *training*, so it needs its own models)
+  min_rows: 400                          # guard for tiny test fixtures
+  drop_startup_regime: true              # PRD 11.4: startup ramp excluded from steady-state
+                                         # training windows by default
+
+# --- Evaluation splits (PRD 13.3) - both are always computed and reported --------------
+splits:
+  chronological_train_fraction: 0.70     # PRD 13.3 first ~70 % train / last ~30 % test
+  chronological_validation_fraction: 0.15  # ASSUMPTION: the held-out block PRD 13.1's "selected by
+                                         # held-out MAE" needs, carved from the *end* of the 70 %
+                                         # training span so selection never sees the test block
+  embargo_minutes: null                  # ASSUMPTION: purge applied to the end of the earlier block
+                                         # so no training target lands inside a later block.
+                                         # null => max(horizon) + max(lag) minutes, computed per model
+  scenario_holdout_regimes:              # PRD 13.3 entire regimes withheld from training
+    - "Fan instability"
+    - "Temperature disturbance"
+
+# --- Metrics (PRD 22) -----------------------------------------------------------------
+metrics:
+  mape_near_zero_fraction: 0.05          # ASSUMPTION: PRD 22 reports MAPE only "where target is
+                                         # strictly positive and non-near-zero"; MAPE is omitted
+                                         # (null + reason) unless every actual exceeds this fraction
+                                         # of the target's median magnitude
+
+# --- Model registry (PRD 13.4) --------------------------------------------------------
+registry:
+  model_version: v1                      # ASSUMPTION: the {version} field of the PRD 13.4 artifact
+                                         # name models/{unit}/{model}_{target}_{horizon}_{version}.joblib
+
+# --- Uncertainty methodology (PRD 13.1.1). No numeric confidence percentage is ever
+# displayed (FR-23); these feed the categorical Recommendation Quality only.
+uncertainty:
+  bootstrap_ensemble_size: 20            # ASSUMPTION (PRD 13.1.1 N=20) for GradientBoosting
+  bootstrap_max_rows: 5000               # ASSUMPTION keeps the ensemble inside NFR-2/NFR-3
+  bootstrap_n_estimators: 60             # ASSUMPTION smaller trees inside the ensemble
+  pretrain_for_optimizer_targets_only: true   # ASSUMPTION: bootstrap ensembles are trained
+                                         # eagerly only for the targets the optimizer reads,
+                                         # and lazily (cached) for any other target on demand
+  optimizer_targets:
+    - thermal_energy_kcal_per_kg_clinker
+    - specific_power_consumption_kwh_t
+  # ASSUMPTION (documented deviation, Task 5) - `optimizer_targets` is ALSO the scope of the
+  # optimizer's uncertainty gate. The ceiling itself is unchanged: the gate compares against
+  # `recommendation_quality.medium.max_relative_uncertainty_pct` below (8 %). What is scoped is
+  # the prediction set it is applied to - the two quantities a PRD 14.2 recommendation claims an
+  # improvement in. The worst spread over EVERY consulted target is still computed, reported in
+  # the gate detail and in `Recommendation.quality_reason` (target and horizon named), and still
+  # caps the categorical Recommendation Quality.
+  #
+  # Measured reason, on the reference operating point: every Model A target sits at or below
+  # 0.51 % relative spread except `oxygen_percent`, at 6.4 / 29.4 / 31.2 / 32.9 % for
+  # t+5/10/15/30 min (graded LOW by the rules below). Model A cannot predict O2 from this feature
+  # set in this regime; that is a documented Task 4 limitation, not something to tune away.
+  # Blocking on it would make the gate a constant "no" regardless of the candidate - not a check.
+  # Reporting it beside a capped quality grade is PRD 30's "shown, not hidden, not silently
+  # clipped". See the src/optimization/optimizer.py module docstring.
+
+# Mapping of the four documented factors (ensemble spread, distance from training
+# distribution, constraint margin, RF/GBM agreement) to HIGH / MEDIUM / LOW (PRD 13.1.1).
+recommendation_quality:
+  high:
+    max_relative_uncertainty_pct: 3.0    # ASSUMPTION ensemble spread / |prediction|
+    max_model_disagreement_pct: 2.0      # ASSUMPTION |RF - GBM| / |prediction|
+    min_constraint_margin: 0.25          # ASSUMPTION worst normalized distance to a hard limit
+    max_ood_score_ratio: 0.60            # ASSUMPTION anomaly score vs. rejection threshold
+  medium:
+    max_relative_uncertainty_pct: 8.0    # ASSUMPTION
+    max_model_disagreement_pct: 6.0      # ASSUMPTION
+    min_constraint_margin: 0.10          # ASSUMPTION
+    max_ood_score_ratio: 0.90            # ASSUMPTION
+  # anything worse than `medium` is LOW
+
+# --- Model B: anomaly detection (PRD 13.2) --------------------------------------------
+anomaly:
+  isolation_forest:
+    n_estimators: 200                    # ASSUMPTION
+    contamination: 0.03                  # ASSUMPTION expected abnormal fraction in normal data
+    max_samples: 4096                    # ASSUMPTION
+    random_state: 42
+  spc:
+    window_min: 120                      # ASSUMPTION rolling baseline window (2 h)
+    sigma_limit: 3.0                     # ASSUMPTION +/-3 sigma control limits
+    ewma_alpha: 0.2                      # ASSUMPTION
+    min_sigma_fraction: 0.001            # ASSUMPTION: floor under the rolling sigma, as a fraction
+                                         # of |rolling mean|, so a tag that happens to sit perfectly
+                                         # still inside its window cannot produce an infinite
+                                         # z-score on its first real move (unit-independent)
+  train_on_normal_regimes_only: true     # PRD 13.2 "trained on normal-regime windows"
+  affected_variables_max: 5              # ASSUMPTION: length of the PRD 15 "Affected variables" list
+  regime_signature:
+    # PRD 15 asks for the "nearest matching regime" from SPC-tag attribution. ASSUMPTION - the
+    # signature of a regime is the mean SPC z-vector of its *training-block* rows, and a live
+    # z-vector is matched to it by cosine similarity. No new physical coefficient is introduced and
+    # nothing but labels already present in the synthetic run is used.
+    min_rows: 30                         # ASSUMPTION: fewer labelled rows than this -> no signature
+    min_similarity: 0.35                 # ASSUMPTION: below this the report says "unclassified
+                                         # deviation" instead of naming a regime it does not match
+  ood_threshold_percentile: 2.0          # ASSUMPTION: score below the 2nd percentile of the
+                                         # normal-regime score distribution => out of
+                                         # distribution for the optimizer gate (PRD 14.3)
+  # PRD 11.4 regime 14 is sensor-layer-only and exists to test whether Model B tells a sensor
+  # fault from a process fault. The discriminator is a *hypothesis* (PRD 15), built from three
+  # signatures that need no new physical coefficient - all ASSUMPTION, all config-driven:
+  sensor_discrimination:
+    drift_window_min: 60                 # ASSUMPTION: window the drift signature is measured over
+    min_monotone_fraction: 0.70          # ASSUMPTION: a drifting transmitter sits on one side of its
+                                         # centre line and stays there; a process excursion crosses
+                                         # back. Fraction of the window on the current side of the
+                                         # EWMA control chart (standard SPC run-rule reading)
+    max_input_deviation_sigma: 2.0       # ASSUMPTION: a sensor fault has no driving cause, so every
+                                         # manipulated variable must stay inside this many sigma
+    max_corroborating_tags: 2            # ASSUMPTION: a sensor fault is local; a process fault
+                                         # propagates to physically coupled tags
+    report_sensor_claim: false           # MEASURED, not an assumption: with the PRD 11.4 regime-14
+                                         # drift magnitudes the three signatures above reach a
+                                         # precision that does not clear the base rate of the rows
+                                         # they score by more than sampling noise, on either unit -
+                                         # i.e. no separation. The figures are per-run and generated
+                                         # into MODEL_CARD.md (regime-14 limitation and "Sensor-
+                                         # versus-process discrimination") rather than repeated
+                                         # here, where they would go stale. While this is false the
+                                         # report says the evidence is inconclusive instead of
+                                         # naming a reading it cannot support (PRD 15 forbids
+                                         # stating a hypothesis as a diagnosis).

@@ -1,0 +1,90 @@
+# =============================================================================
+# configs/dashboard.yaml
+# Synthetic Cement Plant Digital Twin - Demonstration Environment.
+# PRD v1.1.1 Sections 17 (dashboard views), 18 (panels), 19 (animated twin),
+# 26 (DataProvider), 29 (Factory Presentation Mode).
+#
+# This file holds ONLY presentation numbers: alarm banding, animation scaling,
+# downsampling budgets, clock speeds. It holds no process limit, no engineering
+# range and no model threshold - those stay in src/schema.py (tag ranges),
+# configs/kiln_dynamics.yaml / configs/mill_dynamics.yaml (unit constraints),
+# configs/ml.yaml and configs/optimization.yaml. NFR-6/AC-12: a panel may not
+# contain a literal number, so every presentation number lives here.
+# Every numeric is an ASSUMPTION of the demonstration UI (NFR-8).
+# =============================================================================
+
+meta:
+  prd_version: "1.1.1"
+
+# --- Alarm colour coding (PRD 17.1: green / amber / red) --------------------------------
+status:
+  # Amber band, expressed as a fraction of the variable's own documented span, measured
+  # inward from each limit. The limits themselves are never defined here.
+  warn_fraction_of_span: 0.10   # ASSUMPTION amber band width
+  # A value this far outside its limits is drawn as a hard alarm rather than a warning.
+  alarm_fraction_of_span: 0.0   # ASSUMPTION: outside the limit is already red
+
+# --- Animated twin (PRD 19.3/19.4) -----------------------------------------------------
+# Every animation parameter is a function of Twin.current_state_snapshot(); these are the
+# output ranges those functions map onto, not the process values themselves (AC-21).
+animation:
+  flow_period_seconds: [3.6, 0.7]      # ASSUMPTION dash cycle at 0 % -> 100 % of range
+  particles: [3, 10]                   # ASSUMPTION particles per flow path
+  flow_opacity: [0.35, 1.0]            # ASSUMPTION particle opacity at 0 % -> 100 % of range
+  rotation_period_seconds: [7.0, 1.4]  # ASSUMPTION kiln/mill glyph revolution
+  glow_opacity: [0.10, 0.92]           # ASSUMPTION combustion glow
+  stroke_width: [1.6, 6.0]             # ASSUMPTION flow-path thickness
+  min_rate_fraction: 0.02              # ASSUMPTION below this the stream is drawn stopped
+
+# --- History / performance budgets (NFR-1, directive item 23) --------------------------
+history:
+  max_points: 600               # ASSUMPTION points sent to one trend after downsampling
+  sparkline_points: 60          # ASSUMPTION points in a KPI-card sparkline
+  live_window_minutes: 240      # ASSUMPTION trailing window kept for live trends
+  default_window_hours: 6       # ASSUMPTION historical-mode default replay window
+  downsample_method: "minmax"   # ASSUMPTION preserves excursions a plain mean would hide
+
+# --- Simulation clock (directive item 7) -----------------------------------------------
+clock:
+  speeds: [0.25, 1.0, 2.0, 5.0, 10.0]   # PRD-independent UI speeds (directive item 7)
+  default_speed: 1.0
+  step_minutes: 1.0             # ASSUMPTION one STEP press = one dataset sample (PRD 12)
+  max_live_steps: 4320          # ASSUMPTION 3 simulated days of live history per session
+
+# --- Historical replay (directive item 8) ----------------------------------------------
+replay:
+  speeds: [0.25, 1.0, 2.0, 5.0, 10.0]
+  default_speed: 1.0
+  step_minutes: 1.0             # ASSUMPTION scrubber granularity = dataset sampling interval
+
+# --- Session assembly (directive items 7, 8, 21) ---------------------------------------
+# How much simulated material one dashboard session holds. These are demonstration
+# quantities, not process ones: they decide how long the replay window is and how much
+# trailing history the live clock is primed with, and changing them cannot move a single
+# simulated number (the generator is seeded, and a longer window is the same rows plus
+# more of them).
+session:
+  # Length of the replay window, in simulated days. The window is regenerated in-process
+  # from the same seeded configuration rather than sliced out of data/synthetic/, because
+  # a replay needs the run's regime episodes and ground-truth frames, not just its rows.
+  # `null` regenerates the full configured run length (configs/scenarios.yaml), which
+  # reproduces the exported dataset exactly and costs proportionally longer to build.
+  replay_days: 3                # ASSUMPTION replay window length
+  # Trailing rows the live clock is primed with before the first frame is drawn, so the
+  # model panels have the window they need at t=0 instead of filling in over 4 minutes.
+  # `null` uses history.live_window_minutes, which is the window the models actually read.
+  prime_minutes: null           # ASSUMPTION live warm-up = the model window
+
+# --- Presentation mode (PRD 29) --------------------------------------------------------
+presentation:
+  refresh_seconds: 2.0          # ASSUMPTION wall-clock cadence of the presentation loop
+  headline_decimals: 1          # ASSUMPTION rounding of the headline KPI numbers
+
+# --- Numeric readout precision (PRD 17.1 "monospace-flavored numeric readouts") ---------
+# How many digits a rendered number shows. Typography, not measurement: rounding a display
+# never changes the value a panel was handed, and every chart and export still carries the
+# full float. Here rather than in the renderer for the same reason as everything above it -
+# a panel may not hold a literal (NFR-6, AC-12).
+format:
+  significant_digits: 4         # ASSUMPTION digits kept in a panel readout
+  max_decimals: 3               # ASSUMPTION decimal places never exceeded, whatever the magnitude

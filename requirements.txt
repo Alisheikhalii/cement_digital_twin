@@ -1,0 +1,24 @@
+# Synthetic Cement Plant Digital Twin - Demonstration Environment
+# PRD v1.1.1 Section 24 (Technology Stack) / NFR-5: mature, Colab-preinstalled or
+# one-line-pip-installable only. No Docker/Kubernetes/external DB/cloud services.
+#
+# Colab (primary runtime) already ships numpy/pandas/scipy/scikit-learn/plotly/
+# ipywidgets/joblib/pyyaml/pyarrow; the pins below are the versions this project was
+# developed and validated against for the standalone (secondary) runtime.
+
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+scikit-learn>=1.3
+pyyaml>=6.0
+joblib>=1.3
+pyarrow>=14.0          # Parquet export via pandas.to_parquet (FR-4)
+plotly>=5.18           # time-series explorer charts (Section 17 view 6)
+ipywidgets>=8.1        # what-if sliders / mode toggle / fault injection buttons
+
+# Optional stretch model for Model A (Section 13.1) - only used if it measurably
+# beats the scikit-learn baselines; the code runs unchanged when it is absent.
+# lightgbm>=4.1
+
+# Development / validation only (Section 34 testing strategy)
+pytest>=7.4

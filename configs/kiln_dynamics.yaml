@@ -1,0 +1,248 @@
+# =============================================================================
+# configs/kiln_dynamics.yaml
+# Synthetic Cement Plant Digital Twin - Demonstration Environment.
+# All values are simulation estimates, not real factory measurements.
+#
+# PRD v1.1.1 Sections 9 (Kiln Model), 9.2 (canonical fuel-energy units),
+# 9.3 (energy + mass balance), 9.4 (per-relationship delays), 12.1 (data dictionary).
+#
+# EVERY numeric constant here is an engineering-reasoned ASSUMPTION pending real-plant
+# calibration (NFR-8). Calibration notes live in SIMULATION_ASSUMPTIONS.md; the code
+# marks each point of use with a `# ASSUMPTION:` comment.
+# =============================================================================
+
+meta:
+  prd_version: "1.1.1"
+  process_unit: "Kiln"
+  line_description: "mid-size 5-stage preheater / precalciner kiln line"
+  canonical_energy_unit: "MJ"           # PRD 9.2 / FR-24 - single internal energy unit
+  canonical_power_unit: "MJ_per_h"
+
+# --- Fuel properties (PRD 9.2). Mass-based and volume-based LHVs never mixed. -----
+fuel:
+  lhv_solid_fuel_MJ_per_kg: 26.0        # ASSUMPTION coal/petcoke blend
+                                        # 6200 kcal/kg * 4.184e-3 = 25.94 ~ 26.0 MJ/kg
+                                        # published range 24-28 MJ/kg (5800-6700 kcal/kg)
+  lhv_gas_fuel_MJ_per_Nm3: 36.0         # ASSUMPTION natural gas (future stream, volumetric)
+                                        # 8600 kcal/Nm3 * 4.184e-3 = 35.98 ~ 36.0 MJ/Nm3
+  kiln_burner_fuel_share: 0.40          # ASSUMPTION 40% main burner / 60% calciner split
+                                        # typical precalciner split 35-45 / 55-65
+  stoichiometric_air_Nm3_per_MJ: 0.26   # ASSUMPTION solid fuel; published 0.25-0.27
+  combustion_CO2_Nm3_per_MJ: 0.047      # ASSUMPTION coal: ~2.4 kg CO2/kg fuel at 26 MJ/kg
+
+# --- Reference (nominal) operating point (PRD 9.3: "closure holds at the nominal /
+# reference operating point by construction"). Fuel rates are NOT listed here: they are
+# SOLVED from the energy balance at load time (src/process_models/kiln_reference.py) so
+# the reference point can never drift out of energy consistency when a constant is edited.
+reference:
+  kiln_feed_rate_tph: 190.0             # ASSUMPTION mid of PRD 12.1 band 150-230 t/h
+  kiln_speed_rpm: 3.6                   # ASSUMPTION mid of PRD 12.1 band 2.8-4.5 rpm
+  ID_fan_speed_pct: 78.0                # ASSUMPTION mid of PRD 12.1 band 60-95 %
+  raw_meal_moisture_pct: 0.6            # ASSUMPTION mid of PRD 12.1 band 0.3-1.0 %
+  raw_meal_temperature_C: 70.0          # ASSUMPTION mid of PRD 12.1 band 40-90 C
+  ambient_temperature_C: 25.0           # ASSUMPTION reference/dead-state temperature
+  burning_zone_temperature_C: 1450.0    # ASSUMPTION mid of PRD 12.1 band 1400-1500 C
+  preheater_outlet_temperature_C: 360.0 # ASSUMPTION upper-mid of PRD band 280-380 C
+  calciner_temperature_C: 880.0         # ASSUMPTION mid of PRD 12.1 band 850-900 C
+  kiln_inlet_temperature_C: 870.0       # ASSUMPTION mid-upper of PRD band 800-950 C
+  secondary_air_temperature_C: 900.0    # ASSUMPTION mid of PRD 12.1 band 800-1000 C
+  cooler_outlet_temperature_C: 110.0    # ASSUMPTION mid of PRD 12.1 band 80-150 C
+  oxygen_percent: 2.14                  # DERIVED from excess_air_ratio below (PRD band 0.7-4.0);
+                                        # reproduced by src/process_models/kiln_reference.py
+  excess_air_ratio: 1.15                # ASSUMPTION lambda at back-end; gives O2 ~2.1 % dry
+  CO_ppm: 36.5                          # DERIVED from the O2/CO relationship below
+  NOx_ppm: 550.0                        # ASSUMPTION mid of PRD 12.1 band 250-900 ppm
+  SO2_ppm: 60.0                         # ASSUMPTION low-sulfur raw mix (PRD band 10-400 ppm)
+
+# --- Energy balance (PRD 9.3). All terms MJ/h; enforced in RotaryKilnModel. ---------
+#   Fuel_Energy_Input + Recovered_Cooler_Heat
+#     = Useful_Process_Heat + Exhaust_Gas_Loss + Radiation_Other_Loss + Unaccounted_Loss
+energy_balance:
+  cooler_heat_recovery_fraction: 0.75     # ASSUMPTION (PRD 9.3) grate-cooler recuperation
+  radiation_other_loss_fraction: 0.06     # ASSUMPTION (PRD 9.3) of fuel energy input
+  unaccounted_loss_max_fraction: 0.03     # ASSUMPTION (PRD 9.3) TEST TOLERANCE BOUND -
+                                          # never a free-fit parameter (NFR-10)
+  clinker_formation_MJ_per_kg: 1.75       # ASSUMPTION theoretical clinkering enthalpy
+                                          # published 1.70-1.80 MJ/kg clinker
+  cp_clinker_kJ_per_kgK: 1.05             # ASSUMPTION mean cp of clinker to 1400 C
+  cp_raw_meal_kJ_per_kgK: 0.90            # ASSUMPTION mean cp of raw meal
+  cp_exhaust_gas_kJ_per_Nm3K: 1.40        # ASSUMPTION mean cp of preheater exhaust gas
+  water_evaporation_MJ_per_kg: 2.44       # ASSUMPTION latent + sensible to 100 C
+  clinker_exit_temperature_offset_K: 50.0 # ASSUMPTION clinker leaves kiln 50 K below BZT
+  min_preheater_outlet_temperature_C: 150.0  # ASSUMPTION numerical floor for the closure
+  # --- NFR-10 residual VALIDATION methodology (see SIMULATION_ASSUMPTIONS.md 11.5) ---------
+  # None of these numbers enters an equation: they only decide how a row is *judged*. The
+  # +/-3 % bound itself is `unaccounted_loss_max_fraction` above and is NOT restated here - the
+  # settled, transient-integrated and horizon-integrated metrics are all judged against it.
+  residual_validation:
+    near_zero_input_fraction: 0.30          # ASSUMPTION numerical validity floor: a percentage
+                                           # OF the instantaneous input basis is meaningless once
+                                           # that basis is a fraction of the operating point, so
+                                           # rows below this are judged on an absolute /
+                                           # reference-based metric instead. Observed minimum on
+                                           # the default schedule: 0.2355 (startup ramp only).
+    settling_time_constants: 4.0            # ASSUMPTION 4*tau reaches ~98 % of a first-order step,
+                                           # so dead_time + 4*tau of the relationship that carries
+                                           # the closure (energy_closure_to_preheater_temperature)
+                                           # is how long a setpoint move stays a transient.
+    transient_peak_max_fraction: 0.20       # ASSUMPTION bound on the PEAK relative residual during
+                                           # a delay transient. Not a conservation bound - the
+                                           # peak of a redistribution-in-time; observed 0.121.
+    startup_reference_max_fraction: 0.60    # ASSUMPTION bound on |unaccounted| / the REFERENCE
+                                           # input basis during the PRD 11.4 startup ramp, where
+                                           # the instantaneous basis is invalid; observed 0.447.
+
+# --- Mass balance (PRD 9.3). All terms t/h; kiln inventory is a real state variable. --
+#   Kiln_Feed = Clinker_Production + LOI_Loss + Dust_Loss + d(Kiln_Inventory)/dt
+mass_balance:
+  clinker_factor: 0.63                    # ASSUMPTION (PRD 9.3, unchanged from v1.0)
+  dust_loss_fraction: 0.01                # ASSUMPTION (PRD 9.3)
+  LOI_loss_fraction: 0.36                 # DERIVED = 1 - clinker_factor - dust_loss_fraction
+                                          # consistent with raw-meal LOI 35-36 %
+  LOI_CO2_mass_share: 0.95                # ASSUMPTION CO2 share of LOI mass (rest H2O)
+  kiln_residence_time_min: 35.0           # ASSUMPTION (PRD 9.3) replaces v1.0 tau_production;
+                                          # also SUPERSEDES the 8 min "Feed -> Production" lag
+                                          # of PRD table 9.4, whose own basis note says the lag
+                                          # is "derived from the kiln-inventory buffer".
+  CO2_density_kg_per_Nm3: 1.977           # physical constant at 0 C / 101.325 kPa
+  H2O_vapour_density_kg_per_Nm3: 0.804    # physical constant at 0 C / 101.325 kPa
+  tolerance_pct: 3.0                      # ASSUMPTION closure tolerance (NFR-10)
+
+# --- Gas / combustion side (feeds the O2, CO2 and exhaust-flow relationships) --------
+gas_and_combustion:
+  air_supply_fan_exponent: 1.3         # ASSUMPTION combined fan-curve + system-resistance
+                                       # exponent: air_supplied ~ ID_fan_speed_pct ** 1.3
+  gas_displacement_factor: 0.15        # ASSUMPTION calcination-gas displacement of combustion
+                                       # air at constant fan speed (more feed -> less air)
+  false_air_fraction: 0.25             # ASSUMPTION false-air ingress across preheater tower,
+                                       # published typical 10-30 % of process gas volume.
+                                       # Enters DOWNSTREAM of the back-end O2 analyser.
+  primary_air_share: 0.10              # ASSUMPTION share of combustion air via main burner
+  secondary_air_share: 0.55            # ASSUMPTION share recuperated from cooler to kiln hood
+  tertiary_air_share: 0.35             # ASSUMPTION share to precalciner via tertiary duct
+  oxygen_in_dry_air_pct: 20.9          # PHYSICAL CONSTANT O2 content of dry ambient air; used
+                                       # to convert excess air into back-end O2 (dry basis)
+  normal_temperature_K: 273.15         # PHYSICAL CONSTANT reference temperature of the Nm3
+                                       # basis; used to convert normal to ACTUAL volume flow,
+                                       # which is what the ID fan physically moves (PRD 9.5)
+
+# --- Reduced-order steady-state gains (PRD 9.4). Each is routed through its OWN
+# DelayedResponse (see `delays:`), never a shared universal time constant. -------------
+gains:
+  burning_zone_temperature:
+    K_per_pct_kiln_fuel: 4.1           # ASSUMPTION main-burner share of the thermal effect
+    K_per_pct_calciner_fuel: 6.1       # ASSUMPTION calciner share (sums to 10.2 K/% total fuel:
+                                       # +5 % total fuel at constant feed -> ~+51 K BZT)
+    K_per_pct_feed: -9.6               # ASSUMPTION dilution/thermal-load effect
+    K_per_pct_kiln_speed: -2.0         # ASSUMPTION thinner bed / shorter residence time
+    K_per_pct_point_moisture: -0.6      # ASSUMPTION extra evaporation duty, per ABSOLUTE
+                                        # percentage point of raw-meal moisture (see
+                                        # src/process_models/gains.py for the suffix convention)
+    K_per_K_meal_temperature: 0.15     # ASSUMPTION hotter feed needs less preheating
+  calciner_temperature:
+    K_per_pct_calciner_fuel: 4.0       # ASSUMPTION
+    K_per_pct_feed: -3.2               # ASSUMPTION
+  kiln_inlet_temperature:
+    coupling_to_calciner: 0.90         # ASSUMPTION K per K of calciner outlet temperature
+  secondary_air_temperature:
+    K_per_K_clinker_exit: 0.35         # ASSUMPTION recuperation follows clinker temperature
+    K_per_pct_clinker_rate: -0.8       # ASSUMPTION more clinker per unit cooling air
+  cooler_outlet_temperature:
+    K_per_K_clinker_exit: 0.06         # ASSUMPTION
+    K_per_pct_clinker_rate: 0.9        # ASSUMPTION cooler loading effect
+  CO_ppm:
+    base_ppm: 30.0                     # ASSUMPTION baseline CO at healthy excess air
+    amplitude_ppm: 900.0               # ASSUMPTION deliberate nonlinearity (PRD 9.4/20.1)
+    decay_per_pct_O2: 3.2              # ASSUMPTION CO rises steeply as O2 -> O2_floor
+    O2_floor_pct: 0.6                  # ASSUMPTION
+  NOx_ppm:
+    exp_per_100K_BZT: 0.8              # ASSUMPTION thermal-NOx Arrhenius-like sensitivity
+    O2_exponent: 0.35                  # ASSUMPTION fuel/thermal NOx O2 dependence
+  SO2_ppm:
+    O2_threshold_pct: 1.5              # ASSUMPTION below this, reducing conditions release SO2
+    gain_per_pct_O2_deficit: 2.0       # ASSUMPTION multiplier per % O2 below threshold
+  pressures:
+    preheater_pressure_mbar_ref: -18.0 # ASSUMPTION mid of PRD 12.1 band -25..-10 mbar
+    kiln_inlet_pressure_mbar_ref: -4.5 # ASSUMPTION mid of PRD 12.1 band -8..-2 mbar
+    fan_exponent: 2.0                  # ASSUMPTION draught ~ fan speed squared
+    flow_sensitivity: 0.3              # ASSUMPTION extra draught loss with gas volume
+
+# --- Per-relationship transport delays (PRD 9.4): pure dead time then first-order lag.
+# Rows 1-8 are the PRD 9.4 table verbatim; the remaining rows are relationships the PRD
+# describes functionally but does not tabulate - their values are ASSUMPTIONs on the same
+# physical reasoning (gas-side fast, material/thermal-mass side slow).
+delays:
+  fuel_to_burning_zone_temperature:        {dead_time_min: 2.0, tau_min: 25.0}   # PRD 9.4
+  fuel_to_oxygen:                          {dead_time_min: 0.5, tau_min: 4.0}    # PRD 9.4
+  feed_to_production:                      {dead_time_min: 5.0, tau_min: null}   # PRD 9.4;
+    # tau_min: null => lag comes from the physical kiln-inventory buffer
+    # (mass_balance.kiln_residence_time_min), per PRD 9.3.
+  feed_to_burning_zone_temperature:        {dead_time_min: 8.0, tau_min: 20.0}   # PRD 9.4
+  id_fan_to_oxygen:                        {dead_time_min: 0.2, tau_min: 3.0}    # PRD 9.4
+  id_fan_to_pressure:                      {dead_time_min: 0.1, tau_min: 1.0}    # PRD 9.4
+  calciner_fuel_to_calciner_temperature:   {dead_time_min: 1.0, tau_min: 10.0}   # PRD 9.4
+  burning_zone_temperature_to_NOx:         {dead_time_min: 1.0, tau_min: 15.0}   # PRD 9.4
+  oxygen_to_CO:                            {dead_time_min: 0.5, tau_min: 2.0}    # ASSUMPTION
+  oxygen_to_SO2:                           {dead_time_min: 1.0, tau_min: 6.0}    # ASSUMPTION
+  fuel_to_CO2:                             {dead_time_min: 0.5, tau_min: 3.0}    # ASSUMPTION
+  energy_closure_to_preheater_temperature: {dead_time_min: 1.0, tau_min: 4.0}    # ASSUMPTION
+                                        # gas-side response is fast; this delay is what carries
+                                        # the energy closure and dominates the transient
+                                        # residual (PRD 9.3). See SIMULATION_ASSUMPTIONS.md,
+                                        # "Transient energy-balance residual".
+  fuel_to_exhaust_flow:                    {dead_time_min: 0.2, tau_min: 2.0}    # ASSUMPTION
+  feed_to_exhaust_flow:                    {dead_time_min: 5.0, tau_min: 8.0}    # ASSUMPTION
+  clinker_to_secondary_air_temperature:    {dead_time_min: 2.0, tau_min: 8.0}    # ASSUMPTION
+  clinker_to_cooler_outlet_temperature:    {dead_time_min: 3.0, tau_min: 10.0}   # ASSUMPTION
+  calciner_to_kiln_inlet_temperature:      {dead_time_min: 4.0, tau_min: 12.0}   # ASSUMPTION
+  load_to_electrical:                      {dead_time_min: 0.2, tau_min: 2.0}    # ASSUMPTION
+  load_to_vibration:                       {dead_time_min: 1.0, tau_min: 10.0}   # ASSUMPTION
+  load_to_bearing_temperature:             {dead_time_min: 5.0, tau_min: 30.0}   # ASSUMPTION
+
+# --- Equipment / health variables (PRD 9.5) -------------------------------------------
+equipment:
+  id_fan_total_dp_mbar_ref: 100.0      # ASSUMPTION total fan static pressure at reference
+  id_fan_efficiency: 0.72              # ASSUMPTION fan + drive efficiency
+  id_fan_motor_voltage_V: 6000.0       # ASSUMPTION medium-voltage motor; 6 kV is what keeps the
+                                       # derived current inside PRD 12.1's 100-260 A band at the
+                                       # ~1.8 MW reference shaft power
+  id_fan_power_factor: 0.85            # ASSUMPTION
+  kiln_drive_current_ref_A: 120.0      # ASSUMPTION mid of PRD 12.1 band 80-180 A
+  kiln_drive_feed_exponent: 0.8        # ASSUMPTION torque vs bed load
+  kiln_drive_speed_exponent: 0.6       # ASSUMPTION torque vs rotation speed
+  cooler_fan_power_kW_ref: 700.0       # ASSUMPTION mid of PRD 12.1 band 400-1100 kW
+  cooler_fan_clinker_exponent: 1.0     # ASSUMPTION cooling air proportional to clinker rate
+  vibration_ref_mm_s: 2.5              # ASSUMPTION healthy baseline (PRD band 1-8 mm/s)
+  vibration_load_gain_mm_s: 1.2        # ASSUMPTION per unit relative load deviation
+  vibration_health_gain_mm_s: 6.0      # ASSUMPTION per unit health loss (spikes at fault)
+  bearing_temperature_ref_C: 55.0      # ASSUMPTION healthy baseline (PRD band 45-75 C)
+  bearing_temperature_load_gain_K: 12.0  # ASSUMPTION per unit relative load deviation
+  bearing_temperature_health_gain_K: 18.0  # ASSUMPTION per unit health loss
+  health:
+    initial: 1.0
+    degradation_per_day: 0.0008        # ASSUMPTION slow wear drift
+    fault_rate_per_day: 0.02           # ASSUMPTION Poisson mechanical-fault arrival rate
+    fault_health_drop: 0.35            # ASSUMPTION health step-down at fault onset
+    fault_recovery_per_day: 0.6        # ASSUMPTION maintenance recovery rate
+    min_health: 0.35                   # ASSUMPTION floor (equipment would be stopped below)
+
+# --- Operating ranges -----------------------------------------------------------------
+# Absolute bands are the PRD 12.1 documented ranges (used for the data dictionary, the
+# scenario scheduler and the default optimizer envelope). Fuel bands are RATIOS of the
+# energy-balance-derived reference fuel rates - see SIMULATION_ASSUMPTIONS.md section
+# "Documentation-range deviations": PRD 12.1's absolute fuel bands (3.2-5.2 / 4.0-7.5 t/h)
+# cannot hold simultaneously with PRD 12.1's clinker band (95-150 t/h), PRD 9.3's clinker
+# factor (0.63), PRD 9.2's LHV (26 MJ/kg) and PRD 12.1's 700-950 kcal/kg specific heat
+# consumption. The physics/benchmark values are kept; the deviation is documented.
+operating_ranges:
+  kiln_feed_rate_tph: [150.0, 230.0]
+  kiln_speed_rpm: [2.8, 4.5]
+  ID_fan_speed_pct: [60.0, 95.0]
+  raw_meal_moisture_pct: [0.3, 1.0]
+  raw_meal_temperature_C: [40.0, 90.0]
+  kiln_fuel_ratio: [0.80, 1.20]        # ASSUMPTION x reference kiln burner fuel rate
+  calciner_fuel_ratio: [0.80, 1.20]    # ASSUMPTION x reference calciner fuel rate
+
+# Debug-only per-row export of balance residuals (PRD 12.1 note). Off in the standard
+# schema; switched on by the conservation tests (Section 34).
+debug_balance_export: false

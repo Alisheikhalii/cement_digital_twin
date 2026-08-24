@@ -1,0 +1,275 @@
+# =============================================================================
+# configs/scenarios.yaml
+# Synthetic Cement Plant Digital Twin - Demonstration Environment.
+# PRD v1.1.1 Sections 11.2 (SimulationConfig), 11.3 (Scenario Scheduler), 11.4 (the
+# 14 mandatory operating regimes + startup-like transition), 11.5 (Sensor Model),
+# 11.6 (reproducibility / export).
+#
+# Regime setpoints are expressed as RATIOS of the reference operating point in
+# configs/kiln_dynamics.yaml / configs/mill_dynamics.yaml, so a change to the reference
+# point can never silently invalidate a regime definition.
+# Every numeric is an ASSUMPTION pending real-plant calibration (NFR-8).
+# =============================================================================
+
+meta:
+  prd_version: "1.1.1"
+
+simulation:
+  seed: 20240101                    # ASSUMPTION default seed (PRD 11.6, NFR-4)
+  dt_seconds: 60                    # PRD 12: 1 min native sampling
+  duration_days: 30                 # ASSUMPTION default demo horizon: gives hours-to-days
+                                    # per regime (PRD 11.3) and keeps the notebook run short.
+                                    # The generator is sized for the NFR-3 case (6 months at
+                                    # 1 min ~ 260k rows in < 5 min) - raise this to 180 for it.
+  start_timestamp: "2024-01-01T00:00:00Z"   # ASSUMPTION UTC dataset epoch
+  warmup_minutes: 180               # ASSUMPTION: twin is driven to steady state and the
+                                    # warm-up rows are discarded before export
+  export:
+    csv: true                       # PRD 11.6 data/synthetic/*.csv
+    parquet: true                   # PRD 11.6 data/synthetic/*.parquet
+    config_sidecar_json: true       # PRD 11.6 JSON sidecar of the config actually used
+
+# --- Ramp rates (PRD 11.3: "smooth (ramped, not step-instant) ... minimum ramp time
+# ASSUMPTION 3-15 minutes depending on variable, matching realistic operator/DCS rates").
+ramp_times_min:
+  kiln_feed_rate_tph: 10.0          # ASSUMPTION weigh-feeder ramp
+  kiln_fuel_rate_tph: 5.0           # ASSUMPTION
+  calciner_fuel_rate_tph: 5.0       # ASSUMPTION
+  kiln_speed_rpm: 3.0               # ASSUMPTION fast drive response
+  ID_fan_speed: 3.0                 # ASSUMPTION VFD ramp
+  raw_meal_moisture: 15.0           # ASSUMPTION slow upstream disturbance
+  raw_meal_temperature: 15.0        # ASSUMPTION slow upstream disturbance
+  mill_feed_rate_tph: 8.0           # ASSUMPTION
+  separator_speed_rpm: 4.0          # ASSUMPTION
+  fan_speed: 3.0                    # ASSUMPTION
+  mill_speed: 3.0                   # ASSUMPTION a fixed-speed mill in practice (no regime defines
+                                    # mill_speed_ratio, so this ramp is never exercised); the
+                                    # scheduler still needs an entry for every variable it drives.
+                                    # Held at the PRD 11.3 window floor of 3 min, not below it.
+
+# --- Poisson-arrival disturbance events (PRD 11.3) -------------------------------------
+disturbances:
+  feed_moisture_swing:
+    rate_per_day: 6.0               # ASSUMPTION arrivals/day
+    magnitude_pct_abs: [0.10, 0.30] # ASSUMPTION absolute % moisture added/removed
+    duration_min: [20.0, 90.0]      # ASSUMPTION
+  fuel_quality_swing:
+    rate_per_day: 3.0               # ASSUMPTION
+    lhv_change_pct: [-4.0, 4.0]     # ASSUMPTION LHV variability of a coal/petcoke blend
+    duration_min: [30.0, 180.0]     # ASSUMPTION
+  ambient_temperature:
+    mean_C: 25.0                    # matches the reference/dead-state temperature
+    diurnal_amplitude_K: 6.0        # ASSUMPTION day/night swing
+    random_walk_std_K_per_day: 1.5  # ASSUMPTION slow weather drift
+
+# --- Regime schedule (PRD 11.4) -------------------------------------------------------
+# `share` = target fraction of the total simulated duration; the scheduler draws episode
+# lengths uniformly from `dwell_hours` and picks the regime with the largest remaining
+# share deficit, so the realized mix is deterministic for a given seed.
+# `affects` drives the per-unit `injected_fault` ground-truth column: `operating_regime` is
+# the plant-level label on BOTH datasets (FR-3: all 14 regimes present), while
+# `injected_fault` is set only on the unit the regime actually perturbs, so the Model B
+# precision/recall figures of PRD 22 stay meaningful.
+regime_schedule:
+  order: share_deficit              # ASSUMPTION deterministic, seed-stable ordering rule
+  startup_first: true               # Demo 1 (PRD 28) starts from a cold-ish ramp
+  regimes:
+    - id: 1
+      name: "Normal - low production"
+      affects: []
+      injected_fault: null
+      share: 0.14
+      dwell_hours: [4.0, 10.0]
+      setpoints:
+        kiln_feed_ratio: 0.85       # ASSUMPTION 161.5 t/h (PRD band 150-230)
+        kiln_fuel_ratio: 0.86       # ASSUMPTION tracks feed (slightly fuel-rich to hold BZT)
+        calciner_fuel_ratio: 0.86   # ASSUMPTION
+        mill_feed_ratio: 0.85       # ASSUMPTION 106 t/h (PRD band 80-170)
+    - id: 2
+      name: "Normal - medium production"
+      affects: []
+      injected_fault: null
+      share: 0.16
+      dwell_hours: [4.0, 12.0]
+      setpoints:
+        kiln_feed_ratio: 1.00
+        kiln_fuel_ratio: 1.00
+        calciner_fuel_ratio: 1.00
+        mill_feed_ratio: 1.00
+    - id: 3
+      name: "Normal - high production"
+      affects: []
+      injected_fault: null
+      share: 0.14
+      dwell_hours: [4.0, 10.0]
+      setpoints:
+        kiln_feed_ratio: 1.13       # ASSUMPTION 214.7 t/h (PRD band 150-230)
+        kiln_fuel_ratio: 1.12       # ASSUMPTION
+        calciner_fuel_ratio: 1.12   # ASSUMPTION
+        mill_feed_ratio: 1.15       # ASSUMPTION 143.8 t/h (PRD band 80-170)
+    - id: 4
+      name: "High fuel condition"
+      affects: [kiln]
+      injected_fault: "high_fuel"
+      share: 0.05
+      dwell_hours: [2.0, 6.0]
+      setpoints:
+        kiln_feed_ratio: 1.00
+        kiln_fuel_ratio: 1.06       # ASSUMPTION fuel above band relative to feed
+        calciner_fuel_ratio: 1.06   # ASSUMPTION -> BZT excursion above 1500 C, O2 falls
+    - id: 5
+      name: "Low oxygen condition"
+      affects: [kiln]
+      injected_fault: "low_oxygen"
+      share: 0.05
+      dwell_hours: [2.0, 6.0]
+      setpoints:
+        ID_fan_ratio: 0.92          # ASSUMPTION air supply cut (78 -> 71.8 %)
+        kiln_fuel_ratio: 1.03       # ASSUMPTION fuel beyond air supply -> O2 ~1 %, CO rises
+        calciner_fuel_ratio: 1.03   # ASSUMPTION
+    - id: 6
+      name: "High oxygen condition"
+      affects: [kiln]
+      injected_fault: "high_oxygen"
+      share: 0.05
+      dwell_hours: [2.0, 6.0]
+      setpoints:
+        ID_fan_ratio: 1.12          # ASSUMPTION excess air (78 -> 87.4 %)
+    - id: 7
+      name: "Fan instability"
+      affects: [kiln, mill]
+      injected_fault: "fan_instability"
+      share: 0.05
+      dwell_hours: [1.0, 4.0]
+      oscillation:                  # PRD 11.4: injected oscillation/noise burst
+        variables: [ID_fan_speed, fan_speed]
+        amplitude_pct_of_current: 6.0   # ASSUMPTION
+        period_min: 8.0                 # ASSUMPTION
+        noise_pct_of_current: 2.0       # ASSUMPTION superimposed white noise
+    - id: 8
+      name: "Feed disturbance"
+      affects: [kiln, mill]
+      injected_fault: "feed_disturbance"
+      share: 0.05
+      dwell_hours: [1.0, 4.0]
+      unmeasured_disturbance:       # PRD 11.4: independent of setpoint
+        variables: [kiln_feed_rate_tph, mill_feed_rate_tph]
+        magnitude_pct_of_current: 8.0   # ASSUMPTION
+        shape: step_then_ramp_back      # ASSUMPTION
+        signed: true                    # ASSUMPTION sign drawn per episode
+    - id: 9
+      name: "Temperature disturbance"
+      affects: [kiln]
+      injected_fault: "temperature_disturbance"
+      share: 0.05
+      dwell_hours: [2.0, 6.0]
+      setpoints:
+        raw_meal_temperature_delta_K: -25.0   # ASSUMPTION colder meal (70 -> 45 C)
+        raw_meal_moisture_delta_pct_abs: 0.30 # ASSUMPTION wetter meal (0.6 -> 0.9 %)
+                                              # -> BZT excursion downward (PRD 11.4)
+    - id: 10
+      name: "Mill overload"
+      affects: [mill]
+      injected_fault: "mill_overload"
+      share: 0.05
+      dwell_hours: [1.5, 5.0]
+      setpoints:
+        mill_feed_ratio: 1.30       # ASSUMPTION 162.5 t/h -> dP toward the 90 mbar limit
+    - id: 11
+      name: "Mill underload"
+      affects: [mill]
+      injected_fault: "mill_underload"
+      share: 0.05
+      dwell_hours: [1.5, 5.0]
+      setpoints:
+        mill_feed_ratio: 0.68       # ASSUMPTION 85 t/h (PRD band floor 80)
+    - id: 12
+      name: "High separator speed"
+      affects: [mill]
+      injected_fault: "high_separator_speed"
+      share: 0.05
+      dwell_hours: [1.5, 5.0]
+      setpoints:
+        separator_speed_ratio: 1.30 # ASSUMPTION 130 rpm -> Blaine high, throughput down
+    - id: 13
+      name: "Low separator speed"
+      affects: [mill]
+      injected_fault: "low_separator_speed"
+      share: 0.05
+      dwell_hours: [1.5, 5.0]
+      setpoints:
+        separator_speed_ratio: 0.70 # ASSUMPTION 70 rpm -> Blaine low, residue high
+    - id: 14
+      name: "Sensor drift"
+      affects: [kiln, mill]
+      injected_fault: "sensor_drift"
+      share: 0.05
+      dwell_hours: [3.0, 8.0]
+      sensor_layer_only: true       # PRD 11.4: true process stays normal; the bias ramp is
+                                    # applied by the SensorModel (see `sensor_model.drift`)
+  # Startup-like transition (PRD 11.4 trailing paragraph). Not one of the 14 regimes; a
+  # scripted ramp used by Demo 1 and excluded from steady-state training windows by default
+  # (configs/ml.yaml training.drop_startup_regime).
+  startup:
+    name: "Startup transition"
+    injected_fault: null
+    share: 0.01
+    ramp_minutes: 75.0              # ASSUMPTION mid of the PRD 60-90 min window
+    feed_start_ratio: 0.0           # PRD 11.4 feed 0 -> nominal
+    fuel_start_ratio: 0.0           # PRD 11.4 fuel 0 -> nominal
+    target_regime_id: 2             # ASSUMPTION ramps into "Normal - medium production"
+
+# --- Sensor Model (PRD 11.5) -----------------------------------------------------------
+# `noise_pct_of_range` is a percentage of the tag's documented operating range (the single
+# source of that range is src/schema.py, never repeated here). Measurement lag is SEPARATE
+# from and additional to the process delays of PRD 9.4/10.3.
+sensor_model:
+  default:
+    noise_pct_of_range: 1.0         # ASSUMPTION PRD 11.5 "=1-2 % of nominal"
+    lag_seconds: 30.0               # ASSUMPTION transmitter dynamics
+    quantization: null              # ASSUMPTION no quantization unless overridden
+    dropout_probability: 0.002      # ASSUMPTION PRD 11.5 band 0.1-0.5 % of samples
+  overrides:
+    # Gas analysers: noisier at low concentration (PRD 11.5 explicitly calls this out).
+    oxygen_percent:            {noise_absolute: 0.06, quantization: 0.01, lag_seconds: 45.0}
+    CO_ppm:                    {noise_pct_of_value: 8.0, noise_absolute: 3.0, quantization: 1.0, lag_seconds: 45.0}
+    CO2_percent:               {noise_absolute: 0.20, quantization: 0.1, lag_seconds: 45.0}
+    NOx_ppm:                   {noise_pct_of_value: 4.0, quantization: 1.0, lag_seconds: 60.0}
+    SO2_ppm:                   {noise_pct_of_value: 5.0, quantization: 1.0, lag_seconds: 60.0}
+    # Optical/pyrometric burning-zone reading: noisy and slow.
+    burning_zone_temperature:  {noise_absolute: 6.0, quantization: 1.0, lag_seconds: 60.0}
+    # Laboratory-style quality proxies: coarse resolution, long effective lag.
+    simulated_blaine_cm2_g:    {noise_absolute: 35.0, quantization: 10.0, lag_seconds: 300.0}
+    residue_percent:           {noise_absolute: 0.25, quantization: 0.1, lag_seconds: 300.0}
+    # Flow / pressure / electrical instruments.
+    exhaust_gas_flow:          {noise_pct_of_value: 1.5, quantization: 100.0}
+    gas_flow:                  {noise_pct_of_value: 1.5, quantization: 100.0}
+    preheater_pressure:        {noise_absolute: 0.3, quantization: 0.1, lag_seconds: 10.0}
+    kiln_inlet_pressure:       {noise_absolute: 0.2, quantization: 0.1, lag_seconds: 10.0}
+    mill_pressure:             {noise_absolute: 0.4, quantization: 0.1, lag_seconds: 10.0}
+    mill_differential_pressure: {noise_absolute: 0.6, quantization: 0.1, lag_seconds: 15.0}
+    separator_pressure:        {noise_absolute: 0.2, quantization: 0.1, lag_seconds: 10.0}
+    vibration:                 {noise_pct_of_value: 5.0, quantization: 0.1, lag_seconds: 5.0}
+    mill_vibration:            {noise_pct_of_value: 5.0, quantization: 0.1, lag_seconds: 5.0}
+    bearing_temperature:       {noise_absolute: 0.4, quantization: 0.1, lag_seconds: 120.0}
+    # Setpoint-following actuator feedbacks are measured almost exactly.
+    kiln_speed_rpm:            {noise_absolute: 0.01, quantization: 0.01, lag_seconds: 5.0}
+    ID_fan_speed:              {noise_absolute: 0.1,  quantization: 0.1,  lag_seconds: 5.0}
+    fan_speed:                 {noise_absolute: 0.1,  quantization: 0.1,  lag_seconds: 5.0}
+    separator_speed_rpm:       {noise_absolute: 0.2,  quantization: 0.1,  lag_seconds: 5.0}
+  # Slow additive bias ramp, applied ONLY inside the "Sensor drift" regime (PRD 11.4/11.5).
+  # The underlying true process is untouched, which is exactly what the anomaly-detection
+  # test (Section 34) checks it can distinguish from a real process fault.
+  drift:
+    shape: linear                   # ASSUMPTION linear bias ramp over the episode
+    tags:                           # ASSUMPTION drifting instruments and their end-of-episode bias
+      oxygen_percent: 0.45          # % absolute
+      burning_zone_temperature: 18.0  # K
+      simulated_blaine_cm2_g: 120.0   # cm2/g
+      mill_differential_pressure: 6.0 # mbar
+  # Stuck / frozen transmitters: the instrument keeps repeating its last reported value.
+  # PRD 11.5 does not list this imperfection, but FR-13 requires the data-quality report to
+  # detect frozen signals, so the generator has to be able to produce them.
+  stuck:
+    rate_per_day_per_tag: 0.02       # ASSUMPTION one frozen transmitter per tag per ~50 days
+    duration_min: [15.0, 180.0]      # ASSUMPTION until an operator notices and clears it

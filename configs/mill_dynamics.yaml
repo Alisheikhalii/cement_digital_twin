@@ -1,0 +1,116 @@
+# =============================================================================
+# configs/mill_dynamics.yaml
+# Synthetic Cement Plant Digital Twin - Demonstration Environment.
+# All values are simulation estimates, not real factory measurements.
+#
+# PRD v1.1.1 Sections 10 (Cement Mill Model), 10.2 (mass balance),
+# 10.3 (per-relationship delays), 12.2 (data dictionary).
+# Generic closed-circuit finish mill, parameterized so it can later represent either a
+# ball mill or a VRM (PRD 5.1) - no VRM/ball-specific variant in v1.1 (PRD 32).
+# Every numeric constant is an ASSUMPTION pending real-plant calibration (NFR-8).
+# =============================================================================
+
+meta:
+  prd_version: "1.1.1"
+  process_unit: "Cement Mill"
+  circuit: "generic closed circuit with dynamic separator"
+
+reference:
+  mill_feed_rate_tph: 125.0            # ASSUMPTION mid of PRD 12.2 band 80-170 t/h
+  clinker_feed_share: 0.88             # ASSUMPTION -> 110.0 t/h (PRD band 70-150)
+  gypsum_feed_share: 0.04              # ASSUMPTION -> 5.0 t/h (PRD band 3-8)
+  additive_feed_share: 0.08            # ASSUMPTION -> 10.0 t/h (PRD band 0-20)
+  separator_speed_rpm: 100.0           # ASSUMPTION mid of PRD 12.2 band 60-140 rpm
+  fan_speed_pct: 80.0                  # ASSUMPTION mid of PRD 12.2 band 60-100 %
+  mill_speed_rpm: 15.0                 # ASSUMPTION mid of PRD 12.2 band 12-18 rpm
+  simulated_blaine_cm2_g: 3400.0       # ASSUMPTION mid of PRD 12.2 band 2900-4200
+  residue_percent: 10.0                # ASSUMPTION mid of PRD 12.2 band 6-18 %
+  mill_differential_pressure_mbar: 55.0  # ASSUMPTION mid of PRD 12.2 band 20-90 mbar
+  mill_outlet_temperature_C: 105.0     # ASSUMPTION mid of PRD 12.2 band 90-120 C
+  gas_flow_Nm3_h: 200000.0             # ASSUMPTION mid of PRD 12.2 band 150k-260k
+  ambient_temperature_C: 25.0          # ASSUMPTION reference/dead-state temperature
+
+# --- Mass balance (PRD 10.2). Reject recirculation is INTERNAL to the closed circuit
+# (PRD 10.2: "not a true loss") so the closure asserted by test_mill_mass_balance is
+#   Mill_Feed = Cement_Production + Dust_Bag_Filter_Loss + d(Mill_Inventory)/dt
+mass_balance:
+  dust_bag_filter_loss_fraction: 0.003   # ASSUMPTION (PRD 10.2 band 0.2-0.5 % of feed)
+  mill_holdup_t: 12.0                    # ASSUMPTION nominal material holdup ->
+                                         # inventory tau = holdup / throughput ~ 5.8 min
+  tolerance_pct: 3.0                     # ASSUMPTION closure tolerance (NFR-10)
+
+# --- Reduced-order steady-state gains (PRD 10.3), Bond-work-index-inspired ------------
+# Published benchmarks used to anchor the specific power: closed-circuit ball-mill finish
+# grinding 28-42 kWh/t cement; VRM 18-28 kWh/t; whole-plant electrical 90-120 kWh/t.
+gains:
+  mill_power:
+    specific_power_kwh_t_ref: 28.0     # ASSUMPTION mill motor only, at reference Blaine
+    blaine_exponent: 1.3               # ASSUMPTION grinding energy vs fineness
+  separator_power:
+    power_kW_ref: 35.0                 # ASSUMPTION at reference separator speed
+    speed_exponent: 2.5                # ASSUMPTION rotor power vs speed
+  fan_power:
+    power_kW_ref: 700.0                # ASSUMPTION mid of PRD 12.2 band 400-1200 kW
+    speed_exponent: 3.0                # ASSUMPTION fan law
+  gas_flow:
+    speed_exponent: 1.0                # ASSUMPTION fan law (volume ~ speed)
+  blaine:
+    per_pct_separator_speed: 25.0      # ASSUMPTION +10 % separator -> +250 cm2/g
+    per_pct_mill_feed: -18.0           # ASSUMPTION +10 % feed -> -180 cm2/g (coarser)
+    per_pct_gas_flow: 4.0              # ASSUMPTION sweep/transport effect
+  residue:
+    exponent: 2.5                      # ASSUMPTION residue ~ (Blaine_ref/Blaine) ** 2.5
+  differential_pressure:
+    inventory_exponent: 1.2            # ASSUMPTION dP vs bed loading (mill inventory)
+    gas_flow_exponent: 0.5             # ASSUMPTION dP vs gas velocity
+  circulating_load:
+    ratio_ref: 1.8                     # ASSUMPTION reject/product ratio at reference
+    separator_speed_exponent: 1.2      # ASSUMPTION finer cut -> more reject
+  mill_outlet_temperature:
+    K_per_pct_specific_power: 0.30     # ASSUMPTION grinding heat
+    K_per_pct_gas_flow: -0.20          # ASSUMPTION cooling/ventilation effect
+    product_temperature_offset_K: -5.0 # ASSUMPTION product measured after transport
+  pressures:
+    mill_pressure_mbar_ref: -25.0      # ASSUMPTION mid of PRD 12.2 band -40..-10 mbar
+    separator_pressure_mbar_ref: -10.0 # ASSUMPTION mid of PRD 12.2 band -15..-5 mbar
+    fan_exponent: 2.0                  # ASSUMPTION draught ~ fan speed squared
+
+# --- Per-relationship transport delays (PRD 10.3): dead time then first-order lag ------
+# Rows 1-5 are the PRD 10.3 table verbatim; the rest are ASSUMPTIONs on the same basis.
+delays:
+  feed_to_mill_power:                   {dead_time_min: 0.5, tau_min: 4.0}   # PRD 10.3
+  feed_to_differential_pressure:        {dead_time_min: 1.0, tau_min: 6.0}   # PRD 10.3
+  separator_to_blaine:                  {dead_time_min: 3.0, tau_min: 12.0}  # PRD 10.3
+  separator_to_throughput:              {dead_time_min: 2.0, tau_min: 8.0}   # PRD 10.3
+  fan_to_gas_flow:                      {dead_time_min: 0.2, tau_min: 2.0}   # PRD 10.3
+  feed_to_production:                   {dead_time_min: 1.0, tau_min: null}  # ASSUMPTION;
+    # tau_min: null => lag comes from the physical mill-inventory buffer
+    # (mass_balance.mill_holdup_t / throughput), per PRD 10.2.
+  power_to_outlet_temperature:          {dead_time_min: 2.0, tau_min: 12.0}  # ASSUMPTION
+  load_to_electrical:                   {dead_time_min: 0.2, tau_min: 2.0}   # ASSUMPTION
+  load_to_vibration:                    {dead_time_min: 1.0, tau_min: 8.0}   # ASSUMPTION
+  fan_to_pressure:                      {dead_time_min: 0.1, tau_min: 1.0}   # ASSUMPTION
+
+# --- Equipment / health variables ------------------------------------------------------
+equipment:
+  mill_motor_voltage_V: 6000.0         # ASSUMPTION medium-voltage main drive
+  mill_power_factor: 0.87              # ASSUMPTION
+  separator_motor_voltage_V: 400.0     # ASSUMPTION low-voltage separator drive
+  separator_power_factor: 0.85         # ASSUMPTION
+  vibration_ref_mm_s: 3.0              # ASSUMPTION healthy baseline (PRD band 1-10 mm/s)
+  vibration_load_gain_mm_s: 1.5        # ASSUMPTION per unit relative load deviation
+  vibration_health_gain_mm_s: 6.5      # ASSUMPTION per unit health loss
+  health:
+    initial: 1.0
+    degradation_per_day: 0.0008        # ASSUMPTION slow wear drift
+    fault_rate_per_day: 0.02           # ASSUMPTION Poisson mechanical-fault arrival rate
+    fault_health_drop: 0.30            # ASSUMPTION health step-down at fault onset
+    fault_recovery_per_day: 0.6        # ASSUMPTION maintenance recovery rate
+    min_health: 0.35                   # ASSUMPTION floor
+
+operating_ranges:
+  mill_feed_rate_tph: [80.0, 170.0]
+  separator_speed_rpm: [60.0, 140.0]
+  fan_speed_pct: [60.0, 100.0]
+
+debug_balance_export: false

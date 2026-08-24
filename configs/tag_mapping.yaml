@@ -1,0 +1,80 @@
+# =============================================================================
+# configs/tag_mapping.yaml
+# Synthetic Cement Plant Digital Twin - Demonstration Environment.
+# PRD v1.1.1 Section 26.2 ("a per-plant tag-mapping config, not yet populated").
+#
+# WHAT THIS FILE IS FOR
+# ---------------------
+# Every real plant names its instruments its own way. A historian tag is
+# "41LT001.PV" or "KILN_FEED_PV" or "Kiln.RawMeal.Flow" - never
+# `kiln_feed_rate_tph`. This file is where one plant's native tag names are
+# mapped onto the canonical schema of PRD Sections 12.1 / 12.2 (the schema
+# `src/schema.py` declares and every model, gate and panel in this system reads).
+#
+# WHAT THIS FILE IS *NOT*
+# -----------------------
+# It is deliberately EMPTY of mappings, and that is the specified v1.1 state:
+# PRD 26.2 says "not yet populated", because there is no real plant attached to
+# this build. Populating it with invented tag names would fabricate the one thing
+# the Synthetic-to-Real boundary exists to keep honest - it would look like a
+# plant had been onboarded when none has.
+#
+# It holds no engineering range, no unit conversion factor and no process limit
+# either. Ranges and units are the schema's (`src/schema.py`); process limits are
+# the units' own `constraints` blocks in configs/kiln_dynamics.yaml and
+# configs/mill_dynamics.yaml. A mapping file that also carried ranges would give
+# a plant two contradictory authorities for the same band.
+#
+# HOW IT GETS POPULATED
+# ---------------------
+# Per the PRD 21.4 transition path, after a factory supplies historical data:
+#   1. The factory returns the tag list requested by FACTORY_DATA_REQUIREMENTS.md
+#      (PRD Section 27), which asks per process unit and in the plant's own words.
+#   2. One `sources:` block is written here per connection profile.
+#   3. `RealPlantDataProvider` (src/digital_twin/real_plant.py) reads it and
+#      presents the plant behind the same `DataProvider` contract the synthetic
+#      source already satisfies - which is the whole point of FR-14: switching
+#      providers is a one-line change, not a rewrite of the layers above.
+#   4. Everything downstream is then RECALIBRATED and RETRAINED on real data
+#      (PRD 21.4). A tag mapping alone does not make a synthetic-trained model
+#      valid on a real plant, and nothing in this file should be read as
+#      suggesting it does.
+# =============================================================================
+
+meta:
+  prd_version: "1.1.1"
+  # The standing statement of PRD 21.5, kept where a reader of this file meets it
+  # before any mapping does.
+  status: >-
+    Not populated. No real plant is connected to this build. Every number in this
+    system comes from the synthetic simulation of PRD Section 11.
+
+# --- Connection profiles ----------------------------------------------------------------
+# One entry per real source. PRD 26.1 lists the profile kinds a constructor accepts and
+# PRD 26.2 the native export formats each becomes a thin adapter for:
+#
+#   kind: csv        -> path:      a directory or file of historian CSV exports
+#   kind: sql        -> dsn:       a database connection string
+#   kind: opcua      -> endpoint:  an OPC-UA server URL
+#   kind: historian  -> path:      an AVEVA/PI-style export location
+#
+# Shape of one entry, for whoever populates it (no example is given a plant-like
+# name on purpose - a placeholder that reads like a real tag is the failure mode
+# this file is guarding against):
+#
+#   sources:
+#     <profile-name>:
+#       kind: csv
+#       path: /path/to/export            # or dsn: / endpoint:, per kind
+#       timezone: UTC                     # native stamp timezone, if not UTC
+#       native_interval_seconds: 60       # best available resolution of this source
+#       tags:
+#         # <canonical schema tag>: <the plant's own tag name>
+#         kiln_feed_rate_tph: "<PLANT TAG>"
+#         burning_zone_temperature: "<PLANT TAG>"
+#       # Tags the plant does not have. Listed rather than silently absent, so a
+#       # missing critical tag surfaces as a documented gap instead of an empty
+#       # column (PRD 27.1 marks each requested tag mandatory or optional).
+#       unavailable: []
+#
+sources: {}

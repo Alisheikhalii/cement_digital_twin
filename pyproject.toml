@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cement-digital-twin"
+version = "1.1.1"
+description = "Synthetic Cement Plant Digital Twin - Demonstration Environment (PRD v1.1.1)"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+    "pyyaml>=6.0",
+    "joblib>=1.3",
+    "pyarrow>=14.0",
+]
+
+[project.optional-dependencies]
+ui = ["plotly>=5.18", "ipywidgets>=8.1"]
+stretch = ["lightgbm>=4.1"]
+dev = ["pytest>=7.4"]
+
+# PRD Section 23 / NFR-7: `src/` is a normal importable package so the notebook and a
+# future standalone app share identical logic (no notebook-only code paths).
+[tool.setuptools]
+packages = [
+    "src",
+    "src.simulation",
+    "src.process_models",
+    "src.data_generation",
+    "src.data_processing",
+    "src.features",
+    "src.models",
+    "src.optimization",
+    "src.anomaly_detection",
+    "src.digital_twin",
+    "src.visualization",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

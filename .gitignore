@@ -1,0 +1,48 @@
+# =============================================================================
+# Cement Plant Digital Twin - version-control exclusions
+# =============================================================================
+# Rule of thumb: everything here is REGENERABLE from tracked source + configs.
+# Source code, configuration, tests, documentation and model registry metadata
+# are always tracked.
+
+# -- Generated synthetic datasets (~74 MB; rebuilt by the data-generation stage)
+data/
+
+# -- Trained model blobs (~207 MB across models/kiln/ and models/mill/).
+# NOTE: the blobs are NOT directly under models/, so the bare models/*.joblib
+# pattern alone does not reach them - the recursive form below is what matches.
+models/*.joblib
+models/**/*.joblib
+
+# -- models/registry.json MUST stay tracked: it is the envelope training-range
+# source (envelope.training_range_source). Re-included defensively in case a
+# broader models/ rule is ever added above.
+!models/registry.json
+
+# -- Generated evaluation / quality reports (rewritten by train.py, quality.py)
+reports/
+
+# -- Python bytecode and test caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# -- Packaging / build artifacts
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# -- Virtual environments
+.venv/
+venv/
+env/
+
+# -- Local Claude Code permission state (machine-specific, not project config)
+.claude/settings.local.json
+
+# -- OS / editor noise
+.DS_Store
+Thumbs.db
