@@ -1174,6 +1174,16 @@ class SyntheticDataProvider(DataProvider):
         Joined rather than concatenated per dataset because Model A's feature row, Model B's SPC
         window and the PRD 14.5 baselines are all given one ``history`` frame that has to carry
         every column they may read, including the two shared label columns.
+
+        The ``outer`` join manufactures no gap rows: both datasets are indexed by the *same* clock
+        by construction - one :attr:`ScenarioDriver._timestamps` in ``LIVE``, one
+        :attr:`GeneratedRun.index` sliced at one cursor in ``REPLAY`` - so the union of the two
+        indexes is either index. Measured, because it has been misread as a NaN source: over a
+        240-row window in both modes the joined frame holds exactly the NaN cells its two inputs
+        held, and none attributable to the join. The NaN that reaches a model is the PRD 11.5
+        sensor dropout already present in the measured frame (``configs/scenarios.yaml
+        dropout_probability``), which is a historian gap and stays one (PRD 12.4, NFR-6); the
+        consumers below state that absence rather than filling it.
         """
         joined: pd.DataFrame | None = None
         for dataset in DATASETS:
@@ -1251,9 +1261,26 @@ class SyntheticDataProvider(DataProvider):
             return PredictionSet.unavailable(
                 name, stamp, "No rows have been simulated yet, so there is nothing to predict from."
             )
+        try:
+            forecasts = bundle.predict(history=history)
+        except (KeyError, ValueError) as error:
+            # Model A requires a *complete* feature row and refuses one it cannot fill - correct
+            # behaviour on its side, so the guard belongs here rather than in the model. Two things
+            # legitimately trigger it: a PRD 11.5 sensor dropout leaves NaN in the trailing window
+            # and `feature_row` reads the lag block positionally, so a single missing cell makes the
+            # row unusable; and a session younger than the lag block has too few rows to fill it.
+            # Either way this timestamp has no forecast, and saying so is the only honest answer -
+            # holding the last good value or interpolating the hole would put a number on the screen
+            # that no instrument reported (PRD 12.4, NFR-6, item 5). This mirrors
+            # `Optimizer._predict`, which already reports the same refusal as a note.
+            return PredictionSet.unavailable(
+                name,
+                stamp,
+                f"Model A could not build a complete feature row for this timestamp: {error}",
+            )
         row = self._row(name)
         by_horizon: dict[int, list[Value]] = {}
-        for prediction in bundle.predict(history=history):
+        for prediction in forecasts:
             by_horizon.setdefault(int(prediction.horizon_min), []).append(
                 self._value(
                     prediction.target,

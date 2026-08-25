@@ -769,16 +769,30 @@ class DashboardState:
         )
 
     def _predictions(self, dataset: str, stamp: str) -> PredictionSet:
+        """Model A's payload, or the documented unavailable one - never a raised exception.
+
+        ``ValueError`` is caught beside :class:`CapabilityError` because a model that needs a
+        complete input says so by *raising*: Model A refuses a feature row containing NaN (a PRD
+        11.5 sensor dropout in the trailing window) and one built from a window shorter than its lag
+        block. Both are correct on the model's side, and neither may take the whole screen down - so
+        the refusal becomes the payload's own unavailable state carrying the model's words, which
+        states the absence instead of substituting a number for it (item 5, NFR-6).
+        """
         try:
             return self._provider.get_predictions(dataset)
         except CapabilityError:
             return PredictionSet.unavailable(dataset, stamp)
+        except ValueError as error:
+            return PredictionSet.unavailable(dataset, stamp, str(error))
 
     def _anomaly(self, dataset: str, stamp: str) -> AnomalyState:
+        """Model B's verdict, or the documented unavailable one (see :meth:`_predictions`)."""
         try:
             return self._provider.get_anomaly_state(dataset)
         except CapabilityError:
             return AnomalyState.unavailable(dataset, stamp)
+        except ValueError as error:
+            return AnomalyState.unavailable(dataset, stamp, str(error))
 
     @staticmethod
     def _prediction_rows(predictions: PredictionSet) -> tuple[PredictionRow, ...]:
