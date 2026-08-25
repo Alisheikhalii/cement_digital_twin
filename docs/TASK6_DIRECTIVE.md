@@ -237,22 +237,39 @@ impact." No fabricated confidence value.
 **PRD:** §14.4, §16.3. **AC-7**, **AC-18**.
 **Status:** **IMPLEMENTED (payload only).**
 
-### Item 15 — **UNRECOVERED**
-**Tier:** UNRECOVERED
-**Searched, and found nothing in namespace:**
-- `grep -rniE "directive" --include=*.py src` — ~90 citations, covering items 1–14, 16, 18–23. **No
-  in-namespace citation of item 15.**
-- `grep -rniE "(directive|item)[^a-z0-9]{0,8}15\b"` across `*.py`, `*.md`, `*.yaml`.
-- `TASK6_RECOVERY_PLAN.md` — full read. Names items 1–14, 16–25 in various places; **never item 15.**
-- `AUDIT_REPORT.md` — contains **zero** occurrences of "directive".
-- The single repo hit for "directive item 15" is `tests/test_optimization.py:193`, which belongs to
-  the **optimization** directive (see the collision table in §0) and is **not** Task #6 item 15.
+### Item 15 — **UNRECOVERED** (subject area E1-located: Model C / optimization display)
+**Tier:** **UNRECOVERED** for the requirement text · **E1** for its subject area only
 
-**Do not fill this in by inference.** Given items 14 and 16 concern the recommendation card and the
-visibility of refusals, item 15 plausibly sits in the same optimization/decision-support display
-area — but *plausibly* is not evidence, and this document does not record guesses as requirements.
+**Located, not recovered.** Three in-namespace sources cite item 15, all inside *plural range*
+citations. They establish **where** item 15 lives; **not one states what it demands.**
+- `src/digital_twin/synthetic.py:1303` — section header `# -- Model C (PRD 14, 16, 17; items 15-17)`
+- `src/digital_twin/synthetic.py:1310` — `get_optimization` docstring: "Model C's run at the current
+  operating point, refusals included (items 15-16)"
+- `src/digital_twin/state.py:827` — view J docstring: "the optimizer's recommendation or its refusal,
+  as decision support (items 14-16)"
+- Corroborating range: `src/digital_twin/state.py:1` — "Task #6 directive items 1-21".
+
+Item 15 therefore sits in the **Model C / optimization-display** band, between item 14 (the
+recommendation card) and item 16 (refusal visibility). Nothing on disk narrows it further.
+
+> **Correction to the first version of this file.** This section previously asserted "**No
+> in-namespace citation of item 15**". That was **false**, and the fault was the grep, not the repo:
+> both searches used *singular* forms (`directive item 15`,
+> `(directive|item)[^a-z0-9]{0,8}15\b`), which cannot match `items 15-17` or `items 15-16` — the
+> plural `s` is alphanumeric and blocks the character class. The working form is
+> `grep -rniE "\bitems? +[0-9]" --include=*.py src`. With range citations included, in-namespace
+> citations cover items **1–23**; only items **24** and **25** have none.
+
+**Still do not fill this in by inference.** Knowing the area is not knowing the requirement. Items 14
+and 16 already occupy the recommendation card and the visibility of refusals; what item 15 adds on
+top of them is unknown, and this document does not record guesses as requirements.
 **Action required:** recover from the original session transcript, or ask the user. Until then, treat
 Task #6 as having one unrecovered requirement, and do not report Task #6 complete.
+
+**Out of namespace — must not be used as item 15:** `tests/test_optimization.py:193` ("directive item
+15") belongs to the **optimization** directive (collision table, §0). `AUDIT_REPORT.md` contains
+**zero** occurrences of "directive". `TASK6_RECOVERY_PLAN.md` names items 1–14 and 16–25 in various
+places but **never item 15**.
 
 ### Item 16 — Rejected recommendations stay visible, with their reason
 **Tier:** E1
@@ -423,7 +440,7 @@ impossible right now because there is no entrypoint: nothing can be launched, sc
 
 | # | Discrepancy | Resolution |
 |---|---|---|
-| D-1 | **Item 15 unrecovered** | Recover from transcript or ask the user. Task #6 cannot be declared complete with an unrecovered requirement. |
+| D-1 | **Item 15 requirement text unrecovered** | Its *subject area* is E1-located — Model C / optimization display (`synthetic.py:1303`, `:1310`; `state.py:827`). The requirement itself is still unknown. Recover from transcript or ask the user. Task #6 cannot be declared complete with an unrecovered requirement. |
 | D-2 | **View-count: 10 vs 14** | Both are real and only partly overlapping. Directive item 2's A–J (`state.py:71-87`) and PRD §17's ten-row table are different sets; the union is 14 renderable views. PRD-only additions: **Time-Series Explorer, Model Performance, Data Quality, Factory Data Requirements** (AC-3, AC-9). |
 | D-3 | **Scenario count: plan says 10** | Unsupported. Config has **14** regimes; PRD §28 has **5** demos. Read the count from configuration. |
 | D-4 | **"Run Demo" 11 steps** | E3 only. Unverified. |
@@ -480,6 +497,23 @@ The remaining eleven (AC-5, AC-8, AC-13–16, AC-19, AC-20, AC-22–24) belong t
 8. **Do not split `synthetic.py`** and **do not "fix" the package-level import cycle**
    (`TASK6_RECOVERY_PLAN.md` §3, adjudications #3 and #11).
 9. The application is **SYNTHETIC DEMONSTRATION / DECISION SUPPORT ONLY.**
+
+---
+
+## 5. The directive's closing line — VERBATIM
+
+> **"The dashboard is a presentation and decision-support layer over the existing validated
+> implementation, not a new modeling layer."**
+
+**Evidence tier: E2 — attested verbatim.** Quoted word-for-word from `TASK6_RECOVERY_PLAN.md:350`,
+which records it as the closing line of the original 25-item directive. It is reproduced here because
+this document's sole purpose is preserving the directive's language, and an attested verbatim sentence
+absent from it is a preservation gap. It is **not** one of the 25 numbered items and adds no new
+requirement — §4 constraints 1 and 3 already carry its substance. It is retained for its force: it is
+the single sentence that most directly bounds what Task #6 is permitted to be.
+
+*(Recorded during Wave 1 verification, 2026-08-25. The gap was identified by the directive-verification
+pass, which correctly declined to edit outside its own remit; the lead agent added it.)*
 
 ---
 

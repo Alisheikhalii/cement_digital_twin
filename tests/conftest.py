@@ -457,3 +457,506 @@ def what_if_engine(optimizer):
     from src.optimization.what_if import WhatIfEngine
 
     return WhatIfEngine(optimizer)
+
+
+# =============================================================================
+# Task #6 dashboard layer - the Tier-1 stub provider
+# =============================================================================
+# ``TASK6_RECOVERY_PLAN.md`` Section 7 phase 6B and Section 9 "Tier 1": every Task #6 test that is
+# not explicitly an integration test runs against a stub
+# :class:`~src.digital_twin.provider.DataProvider`. The reason is measured rather than stylistic -
+# the plan's Section 10 records ``DashboardState.views()`` at 7.9 s against
+# :class:`~src.digital_twin.synthetic.SyntheticDataProvider` and 0.4 ms against a stub, so that
+# 7.9 s is entirely provider data-fetching and a suite built on the real provider would be
+# unrunnable. Nothing below reads a CSV, loads a model artefact or touches a process model.
+from functools import lru_cache
+
+#: Name the stub reports through the contract, so a header built in a test says what it is.
+STUB_PROVIDER_NAME = "StubDataProvider"
+
+#: The one timestamp every stub payload carries. Fixed, so a frame is reproducible and a test can
+#: assert all ten screens came from a single read; the stub holds no wall clock (plan BUG 2).
+STUB_TIMESTAMP = "2026-01-01T00:00:00"
+
+#: Operating-regime label the stub reports. Deliberately *not* one of the PRD 11.4 regime names: a
+#: stub payload must never be mistakable for a configured scenario.
+STUB_REGIME_LABEL = "STUB_REGIME"
+
+#: Horizons the stub's Model-A channel serves. Two, not PRD 13.1's four: Tier 1 pins the *channels*
+#: a :class:`PredictionSet` keeps apart, and one horizon could not show the ordering is preserved.
+STUB_HORIZONS_MIN = (5, 15)
+
+#: The targets that channel forecasts, per dataset - schema tags, so each Value carries a real unit.
+STUB_PREDICTION_TARGETS = {
+    "kiln": ("burning_zone_temperature", "clinker_production_tph"),
+    "mill": ("simulated_blaine_cm2_g", "cement_production_tph"),
+}
+
+#: Ensemble spread the stub puts on every forecast Value, in the target's own unit (PRD 13.1.1 - a
+#: width, never a confidence percentage).
+STUB_UNCERTAINTY = 1.0
+
+#: The value the stub serves for a tag :mod:`src.schema` documents no numeric range for. Such a
+#: Value carries :attr:`Status.NO_LIMIT`, the honest state for a number with nothing to judge it by.
+STUB_UNRANGED_VALUE = 1.0
+
+#: Equipment health the stub reports (the PRD 9.5 scalar; 1.0 is as-new).
+STUB_HEALTH = 1.0
+
+#: Anomaly score the stub reports - no anomaly, so no Tier-1 test depends on Model B's own bands.
+STUB_ANOMALY_SCORE = 0.0
+
+#: Points a stub trend carries, and the number it claims *were* available. Unequal on purpose, so
+#: :attr:`Series.downsampled` is True and directive item 23's contract is actually exercised.
+STUB_HISTORY_POINTS = 5
+STUB_HISTORY_AVAILABLE = 500
+
+#: Native sampling interval the stub claims; read only by :meth:`DataProvider.check_resample`.
+STUB_NATIVE_SECONDS = 60.0
+
+#: Steps a stub what-if slider divides its documented range into.
+STUB_SLIDER_STEPS = 10
+
+#: Headline the stub's optimization / what-if channel carries. It names itself, so no test can
+#: mistake it for a Model C run.
+STUB_OPTIMIZATION_MESSAGE = "Stub recommendation - no optimizer was run"
+
+
+@lru_cache(maxsize=1)
+def stub_provider_class() -> type:
+    """The stub :class:`~src.digital_twin.provider.DataProvider` class, built on first use.
+
+    Defined inside a cached function rather than at module scope for the same reason every other
+    heavy import in this file is deferred into its fixture: importing
+    :mod:`src.digital_twin.provider` pulls the whole ML stack (measured 1.4 s) and ``conftest.py``
+    is imported by *every* pytest invocation in this repository, including the ones that never touch
+    Task #6. Cached, so identity and ``isinstance`` checks are stable across tests.
+    """
+    from collections import Counter
+    from datetime import datetime
+    from typing import Sequence
+
+    import pandas as pd
+
+    from src import labels, schema
+    from src.digital_twin import layout
+    from src.digital_twin.insights import AnomalyState, OptimizationView, PredictionSet, WhatIfView
+    from src.digital_twin.payloads import (
+        LIVE,
+        EquipmentStatus,
+        KpiGroup,
+        ProviderCapabilities,
+        RegimeState,
+        Series,
+        StateSnapshot,
+        group,
+    )
+    from src.digital_twin.provenance import Provenance, Status, Value
+    from src.digital_twin.provider import CapabilityError, DataProvider
+
+    #: Every tag any view can display, in layout order, deduplicated across the two datasets.
+    served_tags: tuple[str, ...] = tuple(
+        dict.fromkeys(layout.panel_tags("kiln") + layout.panel_tags("mill"))
+    )
+
+    #: The trend x-axis, built once: a stub must not produce a different frame on a second call.
+    history_stamps: tuple[str, ...] = tuple(
+        str(stamp)
+        for stamp in pd.date_range(STUB_TIMESTAMP, periods=STUB_HISTORY_POINTS, freq="1min")
+    )
+
+    def stub_value(
+        tag: str,
+        *,
+        provenance: Provenance,
+        source: str,
+        uncertainty: float | None = None,
+        horizon_min: int | None = None,
+    ) -> Value:
+        """One fixed :class:`Value`: the *midpoint* of that tag's own documented range.
+
+        The midpoint is the one synthetic number that is honest about its own status - it sits
+        inside any warn band a configuration could declare, so the stub can report
+        :attr:`Status.OK` without importing an alarm fraction, and
+        :meth:`Value.fraction_of_range` comes out at exactly 0.5, which is the input the AC-21
+        animation scaling reads. Unit, description and range come from :mod:`src.schema`; this
+        helper writes no engineering number of its own.
+        """
+        spec = schema.get_tag(tag) if schema.has_tag(tag) else None
+        midpoint = spec.midpoint if spec is not None else None
+        return Value(
+            tag=tag,
+            value=STUB_UNRANGED_VALUE if midpoint is None else midpoint,
+            unit=spec.unit if spec is not None else "",
+            provenance=provenance,
+            source=source,
+            description=spec.description if spec is not None else "",
+            range_min=spec.range_min if spec is not None else None,
+            range_max=spec.range_max if spec is not None else None,
+            status=Status.NO_LIMIT if midpoint is None else Status.OK,
+            uncertainty=uncertainty,
+            horizon_min=horizon_min,
+        )
+
+    def stub_total(total: Any, source: str) -> Value:
+        """One directive item 12 daily total. Unit and wording are the layout spec's own.
+
+        Carries :data:`Provenance.OBSERVED`, as the real provider's totals do: a display
+        aggregation of observed values is not a fifth data source.
+        """
+        return Value(
+            tag=total.tag,
+            value=STUB_UNRANGED_VALUE,
+            unit=total.unit,
+            provenance=Provenance.OBSERVED,
+            source=source,
+            description=total.description,
+            status=Status.NO_LIMIT,
+        )
+
+    class StubDataProvider(DataProvider):
+        """A fixed-value provider for the Tier-1 tests (plan Section 7 phase 6B, Section 9).
+
+        It implements all fifteen abstract methods of the contract and nothing else: the optional
+        clock surface is left at the ABC's own refusing implementations, because
+        :mod:`src.digital_twin.provider` states that surface *is* optional and a stub that faked a
+        clock would be pinning something the contract does not require.
+
+        Every capability is a constructor argument, so one class covers both the fully-capable
+        source and the degraded one a ``history=False`` / ``predictions=False`` provider stands for,
+        with no second stub. ``synthetic`` is an argument for the same reason: T1-06 needs a
+        provider that honestly reports ``synthetic=False``.
+
+        :attr:`calls` counts every contract call this instance served, so a later phase can assert
+        that one rendered frame cost one ``get_current_state`` rather than ten.
+        """
+
+        name = STUB_PROVIDER_NAME
+
+        #: The capability flags, in :class:`ProviderCapabilities` field order.
+        FLAGS: tuple[str, ...] = (
+            "synthetic",
+            "truth",
+            "history",
+            "live",
+            "predictions",
+            "anomaly",
+            "optimization",
+            "what_if",
+        )
+
+        def __init__(
+            self,
+            *,
+            synthetic: bool = True,
+            truth: bool = True,
+            history: bool = True,
+            live: bool = True,
+            predictions: bool = True,
+            anomaly: bool = True,
+            optimization: bool = True,
+            what_if: bool = True,
+            mode: str = LIVE,
+        ) -> None:
+            self.calls: Counter = Counter()
+            self.flags: dict[str, bool] = {
+                "synthetic": bool(synthetic),
+                "truth": bool(truth),
+                "history": bool(history),
+                "live": bool(live),
+                "predictions": bool(predictions),
+                "anomaly": bool(anomaly),
+                "optimization": bool(optimization),
+                "what_if": bool(what_if),
+            }
+            self.mode = str(mode)
+
+        # -- bookkeeping ---------------------------------------------------------------------
+        def _served(self, method: str) -> str:
+            """Record one contract call and return the ``source`` string its Values will carry."""
+            self.calls[method] += 1
+            return f"{self.name}.{method}"
+
+        def _require_flag(self, flag: str, method: str) -> str:
+            """Record the call, then refuse it the way the ABC says an absent surface must."""
+            source = self._served(method)
+            if not self.flags[flag]:
+                raise CapabilityError(f"{self.name} was built with {flag}=False")
+            return source
+
+        # -- what this provider can answer ---------------------------------------------------
+        def capabilities(self) -> ProviderCapabilities:
+            self._served("capabilities")
+            return ProviderCapabilities(
+                name=self.name,
+                **self.flags,
+                missing=tuple(
+                    flag for flag in self.FLAGS if flag != "synthetic" and not self.flags[flag]
+                ),
+            )
+
+        # -- PRD 26.1: the two mandated methods ----------------------------------------------
+        def get_timeseries(
+            self,
+            tags: Sequence[str],
+            start: datetime,
+            end: datetime,
+            resample: str | None = None,
+        ) -> pd.DataFrame:
+            self._served("get_timeseries")
+            self.check_resample(resample, native_seconds=STUB_NATIVE_SECONDS)
+            wanted = [str(tag) for tag in tags if schema.has_tag(str(tag))]
+            index = pd.date_range(start, periods=STUB_HISTORY_POINTS, freq="1min")
+            return pd.DataFrame(
+                {tag: [schema.get_tag(tag).midpoint] * len(index) for tag in wanted},
+                index=index,
+            )
+
+        def get_tag_metadata(self) -> pd.DataFrame:
+            self._served("get_tag_metadata")
+            return pd.DataFrame(
+                [
+                    {
+                        "tag": spec.name,
+                        "dataset": spec.dataset,
+                        "unit": spec.unit,
+                        "description": spec.description,
+                        "range_min": spec.range_min,
+                        "range_max": spec.range_max,
+                        "sampling_interval": f"{STUB_NATIVE_SECONDS:g} s",
+                        "provider": self.name,
+                    }
+                    for spec in schema.ALL_TAGS
+                ]
+            )
+
+        # -- directive item 1: the ten data kinds --------------------------------------------
+        def get_current_state(self, dataset: str | None = None) -> StateSnapshot:
+            source = self._served("get_current_state")
+            return StateSnapshot(
+                timestamp=STUB_TIMESTAMP,
+                mode=self.mode,
+                provenance=Provenance.OBSERVED,
+                source=source,
+                values={
+                    tag: stub_value(tag, provenance=Provenance.OBSERVED, source=source)
+                    for tag in served_tags
+                },
+            )
+
+        def get_truth_state(self, dataset: str | None = None) -> StateSnapshot:
+            source = self._require_flag("truth", "get_truth_state")
+            return StateSnapshot(
+                timestamp=STUB_TIMESTAMP,
+                mode=self.mode,
+                provenance=Provenance.TRUTH,
+                source=source,
+                values={
+                    tag: stub_value(tag, provenance=Provenance.TRUTH, source=source)
+                    for tag in served_tags
+                },
+            )
+
+        def get_sensor_values(self, tags: Sequence[str]) -> tuple[Value, ...]:
+            source = self._served("get_sensor_values")
+            return tuple(
+                stub_value(str(tag), provenance=Provenance.OBSERVED, source=source)
+                for tag in tags
+                if str(tag) in served_tags
+            )
+
+        def get_history(
+            self,
+            tags: Sequence[str],
+            *,
+            minutes: float | None = None,
+            start: datetime | None = None,
+            end: datetime | None = None,
+            max_points: int | None = None,
+            truth: bool = False,
+        ) -> tuple[Series, ...]:
+            source = self._require_flag("history", "get_history")
+            if truth and not self.flags["truth"]:
+                raise CapabilityError(f"{self.name} was built with truth=False")
+            budget = STUB_HISTORY_POINTS if max_points is None else max(1, int(max_points))
+            stamps = history_stamps[:budget]
+            provenance = Provenance.TRUTH if truth else Provenance.OBSERVED
+            out: list[Series] = []
+            for tag in tags:
+                name = str(tag)
+                if name not in served_tags:
+                    continue
+                point = stub_value(name, provenance=provenance, source=source)
+                out.append(
+                    Series(
+                        tag=name,
+                        unit=point.unit,
+                        timestamps=stamps,
+                        values=(point.value,) * len(stamps),
+                        provenance=provenance,
+                        source=source,
+                        points_available=STUB_HISTORY_AVAILABLE,
+                        method="stub",
+                        range_min=point.range_min,
+                        range_max=point.range_max,
+                    )
+                )
+            return tuple(out)
+
+        def get_equipment_status(self) -> tuple[EquipmentStatus, ...]:
+            source = self._served("get_equipment_status")
+            return tuple(
+                EquipmentStatus(
+                    name=spec.name,
+                    unit=spec.title,
+                    kind=spec.kind,
+                    state=labels.EQUIPMENT_RUNNING,
+                    health=STUB_HEALTH,
+                    driver=stub_value(spec.driver, provenance=Provenance.OBSERVED, source=source),
+                    detail=", ".join(spec.detail),
+                    constraints=(),
+                )
+                for spec in layout.EQUIPMENT
+            )
+
+        def get_kpis(self) -> tuple[KpiGroup, ...]:
+            source = self._served("get_kpis")
+
+            def cards(tags: Sequence[str]) -> tuple[Value, ...]:
+                return tuple(
+                    stub_value(tag, provenance=Provenance.OBSERVED, source=source) for tag in tags
+                )
+
+            totals = tuple(stub_total(total, source) for total in layout.DAILY_TOTALS)
+            return (
+                group(layout.KILN_KPI_TITLE, cards(layout.KILN_KPI_TAGS)),
+                group(layout.MILL_KPI_TITLE, cards(layout.MILL_KPI_TAGS)),
+                group(
+                    layout.PLANT_KPI_TITLE,
+                    cards(layout.PLANT_KPI_TAGS) + totals,
+                    note=labels.SPECIFIC_VS_TOTAL_NOTE,
+                ),
+            )
+
+        def get_operating_regime(self) -> RegimeState:
+            source = self._served("get_operating_regime")
+            return RegimeState(
+                label=STUB_REGIME_LABEL,
+                regime_id=0,
+                injected_fault=None,
+                provenance=Provenance.CONFIGURATION,
+                source=source,
+                sensor_layer_only=False,
+            )
+
+        def get_anomaly_state(self, dataset: str = "kiln") -> AnomalyState:
+            self._require_flag("anomaly", "get_anomaly_state")
+            return AnomalyState(
+                available=True,
+                dataset=dataset,
+                timestamp=STUB_TIMESTAMP,
+                status=labels.STATUS_LEVEL_VALUES[0],
+                is_anomaly=False,
+                score=STUB_ANOMALY_SCORE,
+                provenance=Provenance.PREDICTION,
+            )
+
+        def get_predictions(self, dataset: str = "kiln") -> PredictionSet:
+            source = self._require_flag("predictions", "get_predictions")
+            targets = STUB_PREDICTION_TARGETS.get(dataset, STUB_PREDICTION_TARGETS["kiln"])
+            return PredictionSet(
+                available=True,
+                dataset=dataset,
+                timestamp=STUB_TIMESTAMP,
+                current=tuple(
+                    stub_value(target, provenance=Provenance.OBSERVED, source=source)
+                    for target in targets
+                ),
+                by_horizon={
+                    minutes: tuple(
+                        stub_value(
+                            target,
+                            provenance=Provenance.PREDICTION,
+                            source=f"{source}/{target}/t+{minutes}min",
+                            uncertainty=STUB_UNCERTAINTY,
+                            horizon_min=minutes,
+                        )
+                        for target in targets
+                    )
+                    for minutes in STUB_HORIZONS_MIN
+                },
+                horizons_min=STUB_HORIZONS_MIN,
+                model_version=STUB_PROVIDER_NAME,
+            )
+
+        def get_optimization(self, *, mode: str = "NORMAL") -> OptimizationView:
+            self._require_flag("optimization", "get_optimization")
+            return OptimizationView(
+                available=True,
+                timestamp=STUB_TIMESTAMP,
+                mode=mode,
+                refused=False,
+                message=STUB_OPTIMIZATION_MESSAGE,
+                payload={},
+                gates=(),
+                evaluated=1,
+                runtime_s=None,  # a stub carries no wall clock (plan Section 10 / BUG 2)
+            )
+
+        def run_what_if(
+            self,
+            changes: Mapping[str, float] | None = None,
+            *,
+            delta_fractions: Mapping[str, float] | None = None,
+            mode: str = "NORMAL",
+        ) -> WhatIfView:
+            self._require_flag("what_if", "run_what_if")
+            return WhatIfView(
+                available=True,
+                timestamp=STUB_TIMESTAMP,
+                mode=mode,
+                verdict=labels.WHAT_IF_VERDICT_PASS,
+                action=STUB_OPTIMIZATION_MESSAGE,
+                panel={},
+                requested=tuple(
+                    {"name": name, "value": float(value)}
+                    for name, value in dict(changes or {}).items()
+                ),
+                runtime_s=None,
+            )
+
+        def what_if_sliders(self, *, mode: str = "NORMAL") -> tuple[Mapping[str, Any], ...]:
+            self._require_flag("what_if", "what_if_sliders")
+            out: list[dict[str, Any]] = []
+            for name in schema.manipulated_variables():
+                spec = schema.get_tag(name)
+                if spec.span is None:
+                    continue
+                out.append(
+                    {
+                        "name": name,
+                        "unit": spec.unit,
+                        "current": spec.midpoint,
+                        "min": float(spec.range_min),
+                        "max": float(spec.range_max),
+                        "step": float(spec.span) / STUB_SLIDER_STEPS,
+                        "mode": mode,
+                    }
+                )
+            return tuple(out)
+
+    return StubDataProvider
+
+
+@pytest.fixture
+def stub_provider() -> type:
+    """The stub :class:`~src.digital_twin.provider.DataProvider` *class*, used as a factory.
+
+    Returns the class rather than an instance, and is function-scoped rather than session-scoped,
+    because the stub counts the contract calls it served in ``provider.calls``: a shared instance
+    would leak those counts between tests and the per-frame call-count assertions the later phases
+    need would stop meaning anything. Call it for a fresh provider with an empty counter; keyword
+    arguments set the capability flags - ``stub_provider(predictions=False)``,
+    ``stub_provider(synthetic=False)``.
+    """
+    return stub_provider_class()
