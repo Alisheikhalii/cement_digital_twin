@@ -75,7 +75,11 @@ class ClockState:
     speed: float
     speeds: tuple[float, ...]
     step_minutes: float
-    timestamp: str
+    #: The position the provider last reported, or ``None`` when it reports none at all. A source
+    #: that refuses ``get_current_state`` (PRD 26.1's real-plant stub) has no position to show, and
+    #: an absent position is stated as ``None`` rather than filled in with a plausible timestamp
+    #: (directive item 20 / NFR-6). ``None`` stays JSON-describable, so item 21 still holds.
+    timestamp: str | None
     step_index: int
     step_count: int
     fraction: float
@@ -138,7 +142,35 @@ class Clock:
         self._ended = False  # the LIVE source refused a further advance (budget reached)
         self._speed = self._mode_clock().default_speed
         # Seed the cached position from the provider's current state (one call, at construction).
-        self._last_timestamp = provider.get_current_state().timestamp
+        self._last_timestamp = self._read_position()
+
+    def _read_position(self) -> str | None:
+        """The provider's current timestamp, or ``None`` when it will not report one.
+
+        ``get_current_state`` is a *required* surface of the contract - it is an
+        ``@abstractmethod`` and, unlike ``truth`` / ``history`` / ``predictions`` / ``anomaly`` /
+        ``optimization`` / ``what_if``, :class:`~src.digital_twin.payloads.ProviderCapabilities`
+        carries **no flag** for it. So there is no flag to gate this read on, and
+        ``ProviderCapabilities.missing`` cannot serve as one either: ``real_plant`` fills it with
+        data-kind names (``"current_state"``, ``"truth_state"``) while ``synthetic`` and the test
+        stub fill it with capability-*flag* names (``"history"``, ``"truth"``), so a membership test
+        would silently never fire for one of the two vocabularies.
+
+        The gate is therefore the contract's own refusal, which is the one signal both vocabularies
+        agree on: :class:`~src.digital_twin.provider.CapabilityError` is documented as the type
+        "the dashboard can catch to render the 'not available from this data source' state", and
+        PRD 26.1 has :class:`~src.digital_twin.real_plant.RealPlantDataProvider` refuse with its
+        parent ``NotImplementedError``, so catching the parent covers both. This is the same
+        "catch the refusal and degrade" pattern :meth:`_advance_steps`, :meth:`reset` and
+        :meth:`scenarios` already use below.
+
+        A source that will not report a position gets ``None`` - an absence, not a substituted
+        value. Nothing is fabricated and nothing falls back to another provider.
+        """
+        try:
+            return self._provider.get_current_state().timestamp
+        except NotImplementedError:
+            return None
 
     # -- mode-aware settings -----------------------------------------------------------------
     def _mode_clock(self) -> ClockSettings | ReplaySettings:
@@ -158,10 +190,13 @@ class Clock:
         """Cache the position after a provider call so :meth:`state` needs no extra read.
 
         ``advance``/``seek`` hand back the new snapshot; ``reset`` returns nothing, so the caller
-        passes ``None`` and we ask the provider once for the fresh timestamp.
+        passes ``None`` and we ask the provider once for the fresh timestamp - through
+        :meth:`_read_position`, so a source that refuses the read degrades here exactly as it does
+        at construction instead of turning RESET into a crash.
         """
         if snapshot is None:
-            snapshot = self._provider.get_current_state()
+            self._last_timestamp = self._read_position()
+            return
         self._last_timestamp = snapshot.timestamp
 
     def _replay_position(self) -> tuple[int, int, float, bool, bool]:
@@ -170,10 +205,14 @@ class Clock:
         Derived from :meth:`~DataProvider.window` (the recorded span) and the cached current
         timestamp, converted to a count of ``step_minutes``-sized samples. Uniform sampling is a
         PRD 12 guarantee, so timestamp arithmetic and an index count agree.
+
+        A source with no window, or one that reports no position at all, has nothing to measure:
+        both collapse to the single degenerate sample below rather than to ``NaT`` arithmetic, which
+        would render as a ``NaN`` scrubber fraction - a fabricated number, which item 20 forbids.
         """
         window = self._provider.window()
         step_min = self._step_minutes()
-        if window is None:
+        if window is None or self._last_timestamp is None:
             return 1, 1, 0.0, True, True
         first, last = pd.Timestamp(window[0]), pd.Timestamp(window[1])
         current = pd.Timestamp(self._last_timestamp)
@@ -300,10 +339,12 @@ class Clock:
 
         Implemented with :meth:`~DataProvider.seek` at ``current - steps x step_minutes``, clamped
         to the window start, because the provider's step-back is a seek, not a negative advance.
+        A source that reports no position has no ``current`` to step back from, so it refuses here
+        rather than seeking to ``NaT``.
         """
         self._playing = False
         self._pending = 0.0
-        if not self._has_replay():
+        if not self._has_replay() or self._last_timestamp is None:
             return self.state()
         window = self._provider.window()
         first = pd.Timestamp(window[0])
