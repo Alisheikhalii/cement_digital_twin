@@ -2,7 +2,7 @@
 
 **Purpose:** the file a new session reads first. One line per outstanding Task #6 item, plus the
 current commit and test counts. Created at the end of Wave 3A (`docs/WAVE3A_REPORT.md`); last
-updated at the end of Wave 3B (`docs/WAVE3B_REPORT.md`).
+updated at the end of Wave 3C (`docs/WAVE3C_REPORT.md`).
 
 ---
 
@@ -10,11 +10,11 @@ updated at the end of Wave 3B (`docs/WAVE3B_REPORT.md`).
 
 | | |
 |---|---|
-| **Branch** | `main` |
-| **HEAD after Wave 3B** | the Wave 3B commit, whose parent is `440602e` (`git log --oneline -2`). Not pinned here: a commit cannot contain its own hash. |
-| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → Wave 3B |
-| **Full regression** | **526 passed, 0 xfailed** (~6m25s). Baseline before Wave 3B was 524 passed, 2 xfailed. |
-| **xfails** | **None.** The two `xfail(strict=True)` B-7 badge pins were cleared by Wave 3B — the badge now derives at both sites and the markers are gone. |
+| **Branch** | `task6/wave-3c` — pushed, **not merged**. Awaiting human review. |
+| **HEAD after Wave 3C** | the Wave 3C commit, whose parent is `8cbda49` (`git log --oneline -2`). Not pinned here: a commit cannot contain its own hash. |
+| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → Wave 3C |
+| **Full regression** | **537 passed, 0 xfailed** (~4m28s). Baseline before Wave 3C was 526 passed; +11 new reproducibility tests. |
+| **xfails** | **None.** |
 | **Regression floor** | 428 (directive §4.7). Any drop halts the phase and is investigated — never "fixed" by editing a test. |
 
 ### Frozen layer — verify before and after every wave
@@ -34,7 +34,8 @@ git ls-files -s tests/ | grep -v task6 | md5sum
 ### Task #6 test modules (not frozen — these are the ones waves may extend)
 
 `test_task6_provider_contract.py` · `test_task6_app_smoke.py` · `test_task6_frame_nan.py` ·
-`test_task6_performance.py` · `test_task6_twin.py` · `test_task6_real_plant_state.py` *(new, Wave 3A)*
+`test_task6_performance.py` · `test_task6_twin.py` · `test_task6_real_plant_state.py` *(Wave 3A)* ·
+`test_task6_reproducibility.py` *(new, Wave 3C)*
 
 ---
 
@@ -45,7 +46,7 @@ git ls-files -s tests/ | grep -v task6 | md5sum
 | **Item 15 requirement text** | **UNRECOVERED** | Directive D-1. Subject area located (Model C / optimization display) but the requirement itself is unknown. Recover from transcript or ask the user. **Task #6 cannot be reported complete while this stands.** |
 | **B-7 badge (2 sites)** | **CLOSED** (Wave 3B) | Both sites derive the badge from `capabilities().synthetic` via `labels.presentation_card_label()`: `DashboardState._header` reads it inline, and `svg_twin` threads an explicit `synthetic: bool` through `twin_document`/`twin_html`/`render_twin`/`_header_html`. Both strict xfails removed. |
 | **`app.py:123` badge derivation** | Open (new) | Follow-up from Wave 3B. `build_document` calls `render_twin` without `synthetic=`, so production takes the `True` default instead of deriving it. Truthful today (synthetic provider) but not derived. One-line fix — but it widens `build_document`'s documented `view(view_id)`-only contract, so it needs the next wave that owns `app.py`. |
-| **BUG 2** | Open | Not started. |
+| **BUG 2** | **CLOSED** (Wave 3C) | Views I/J were non-reproducible only in `runtime_s` — view J carried it at two depths (`view.runtime_s` *and* `view.payload.runtime_s`). Fixed by **excluding it from comparison**: a `signature()` method on `WhatIfView`/`OptimizationView` and both screen view models, reusing the frozen layer's own `OptimizationResult.NON_REPRODUCIBLE_FIELDS` convention. `synthetic.py` is byte-identical to `main` — zero production change. An AST guard (mutation-tested) fails if production ever hardcodes the duration. Views I/J are now golden-testable; **no golden file written yet.** |
 | **Twin missing-data symmetry** | Open | Not started. |
 | **`TestNfr2Budget`** | Not written | NFR-2 (< 3 s what-if round trip) is the real budget; `configs/dashboard.yaml` `refresh_seconds: 2.0` is **not** a PRD budget (directive D-10). |
 | **`DATA_DICTIONARY.md`** | Missing | PRD §35 document. |
