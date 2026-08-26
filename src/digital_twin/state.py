@@ -567,7 +567,14 @@ class DashboardState:
             subtitle=subtitle,
             mode=self._provider.mode,
             timestamp=timestamp if timestamp is not None else frame.snapshot.timestamp,
-            badge=labels.SYNTHETIC_DEMONSTRATION_LABEL,
+            # Item 20 / B-7: the badge states what the source actually is. It is read from the
+            # provider's own ``synthetic`` flag rather than fixed here, because a header printing
+            # "Synthetic Demonstration" over a provider reporting ``synthetic=False`` would be a
+            # false claim about the data's origin. ``capabilities()`` is a few microseconds and is
+            # already read inline elsewhere in this class, so it is not carried on ``_Frame``.
+            badge=labels.presentation_card_label(
+                "synthetic" if self._provider.capabilities().synthetic else "estimate"
+            ),
             regime=frame.regime,
             notices=tuple(notices),
         )

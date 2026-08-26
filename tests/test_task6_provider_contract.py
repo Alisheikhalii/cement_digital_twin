@@ -20,8 +20,9 @@ What this file pins, and nothing more:
 * **substitutability** (FR-14) - :class:`DashboardState` and :class:`DashboardSession` accept a
   provider they have never seen, with no dashboard change, and degrade rather than crash when that
   provider can answer almost nothing;
-* **the T1-06 honesty failure** - two ``xfail(strict=True)`` tests holding the *correct* derived-badge
-  behaviour, so the suite stays green today and turns red the moment phase 6D half-fixes it.
+* **the T1-06 honesty badge** (plan B-7) - the header badge is *derived* from the provider's own
+  ``synthetic`` flag at both sites, so no screen and no saved document claims a synthetic origin for
+  a source that reports otherwise. Held as two ``xfail(strict=True)`` tests until Wave 3B fixed both.
 
 Deliberately absent: any assertion about a process value, an alarm band or a model metric. Those
 belong to Tasks #2-#5, which are frozen; a Tier-1 test that pinned one would couple the dashboard
@@ -74,30 +75,19 @@ REAL_PLANT_ARGS: dict[str, tuple[tuple, dict]] = {
     "get_history": ((("burning_zone_temperature",),), {}),
 }
 
-#: The xfail reason for T1-06, written once because it must cite *both* defect sites. A phase-6D
-#: fix that repairs only the first one leaves the honesty violation live in the twin's own HTML, and
-#: a single-site reason would let that half-fix look green.
-BADGE_XFAIL_REASON = (
-    "T1-06 (TASK6_RECOVERY_PLAN.md B-7): the 'Synthetic Demonstration' badge is hard-coded at TWO "
-    "sites, not one - src/digital_twin/state.py:570 (badge=labels.SYNTHETIC_DEMONSTRATION_LABEL, "
-    "unconditional inside DashboardState._header) and src/visualization/svg_twin.py:530 "
-    "(badge = theme.html(labels.SYNTHETIC_DEMONSTRATION_LABEL), inside _header_html). Both ignore "
-    "ProviderCapabilities.synthetic (src/digital_twin/payloads.py:181). The recovery plan names "
-    "only the first. Fixed in phase 6D; until BOTH sites derive the badge, this stays xfail."
-)
-
-#: Parameter names a phase-6D fix could plausibly use to hand the twin renderer the fact it is
-#: missing. Probed rather than assumed, so the site-2 test flips green for any of them instead of
-#: silently xfailing forever on a ``TypeError`` because 6D picked a different word.
+#: Parameter names a fix could plausibly have used to hand the twin renderer the fact it was
+#: missing. Probed rather than assumed, so the site-2 test binds to whichever word the fix chose
+#: instead of failing on a ``TypeError``. Wave 3B chose ``synthetic``; the others stay listed so a
+#: later refactor to a capabilities object does not have to rewrite this test.
 TWIN_CAPABILITY_PARAMETERS = ("capabilities", "caps", "provider_capabilities", "synthetic")
 
 
 def _twin_capability_kwargs(func, *, synthetic: bool) -> dict | None:
     """The keyword by which ``func`` can be told whether its source is synthetic, or ``None``.
 
-    ``svg_twin._header_html`` receives only ``snapshot`` and ``title``, so today no such keyword
-    exists anywhere on the render path and this returns ``None`` - which is the defect, stated as a
-    fact about the signature rather than as a guess about the eventual API.
+    ``None`` means the render path exposes no such keyword - the original T1-06 site-2 defect, where
+    ``svg_twin._header_html`` received only ``snapshot`` and ``title`` and so could not know what it
+    was labelling. The site-2 test asserts this is not ``None`` so that defect cannot return.
     """
     from src.digital_twin.payloads import ProviderCapabilities
 
@@ -504,11 +494,10 @@ def test_the_stub_fixture_hands_out_a_fresh_call_counter(stub_provider):
 
 
 # =============================================================================
-# T1-06: the hard-coded honesty badge (plan B-7) - the correct behaviour, held as xfail
+# T1-06: the honesty badge (plan B-7) - derived at both sites since Wave 3B
 # =============================================================================
-@pytest.mark.xfail(strict=True, reason=BADGE_XFAIL_REASON)
 def test_the_screen_header_badge_is_derived_from_the_providers_synthetic_flag(make_state):
-    """T1-06 site 1 - ``state.py:570``. Item 20: the header states what the source actually is.
+    """T1-06 site 1 - ``DashboardState._header``. Item 20: the header states what the source is.
 
     A provider reporting ``synthetic=False`` is telling the truth about itself, and a header that
     prints "Synthetic Demonstration" over it is making a false claim about the data's origin - the
@@ -528,22 +517,21 @@ def test_the_screen_header_badge_is_derived_from_the_providers_synthetic_flag(ma
         assert view.header.badge == expected, key
 
 
-@pytest.mark.xfail(strict=True, reason=BADGE_XFAIL_REASON)
 def test_the_animated_twin_badge_is_derived_from_the_providers_synthetic_flag(
     stub_provider, dashboard_settings
 ):
-    """T1-06 site 2 - ``svg_twin.py:530``, the site the recovery plan does not name.
+    """T1-06 site 2 - ``svg_twin._header_html``, the site the recovery plan does not name.
 
-    ``_header_html`` receives only the snapshot and a title, so it cannot see capabilities at all: a
-    phase-6D fix has to thread that fact through :func:`render_twin` / :func:`twin_html` /
-    :func:`twin_document`. Until it does, the twin's own HTML keeps asserting "Synthetic
-    Demonstration" over a source that says it is not synthetic, so a 6D change touching only
-    ``state.py`` leaves the honesty violation live here while site 1 goes green.
+    ``_header_html`` originally received only the snapshot and a title, so it could not see
+    capabilities at all: the fix had to thread that fact through :func:`render_twin` /
+    :func:`twin_html` / :func:`twin_document`. Until it did, the twin's own HTML kept asserting
+    "Synthetic Demonstration" over a source that says it is not synthetic - so a change touching
+    only ``state.py`` would have left the honesty violation live here while site 1 went green.
 
     The assertion is bidirectional and wording-agnostic on purpose: the badge must be *absent* for a
     source reporting ``synthetic=False`` and *present* for one reporting ``synthetic=True``. That is
-    what "derived" means, and it holds whether 6D substitutes the other allowed label or drops the
-    badge entirely.
+    what "derived" means, and it holds whether the fix substitutes the other allowed label or drops
+    the badge entirely.
     """
     from src import labels
     from src.visualization import svg_twin
@@ -554,8 +542,8 @@ def test_the_animated_twin_badge_is_derived_from_the_providers_synthetic_flag(
 
     honest = _twin_capability_kwargs(svg_twin.render_twin, synthetic=False)
     assert honest is not None, (
-        "svg_twin.render_twin takes no capability argument, so _header_html (svg_twin.py:530) "
-        f"cannot know whether its source is synthetic and emits {labels.SYNTHETIC_DEMONSTRATION_LABEL!r} "
+        "svg_twin.render_twin takes no capability argument, so _header_html cannot know whether "
+        f"its source is synthetic and emits {labels.SYNTHETIC_DEMONSTRATION_LABEL!r} "
         f"unconditionally; expected one of {TWIN_CAPABILITY_PARAMETERS}"
     )
     synthetic = _twin_capability_kwargs(svg_twin.render_twin, synthetic=True)

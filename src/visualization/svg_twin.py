@@ -524,10 +524,18 @@ def _svg(
     )
 
 
-def _header_html(snapshot: StateSnapshot, title: str | None) -> str:
-    """The title strip: heading, the standing Synthetic-Demonstration badge, and the live stamp."""
+def _header_html(snapshot: StateSnapshot, title: str | None, *, synthetic: bool) -> str:
+    """The title strip: heading, the source badge, and the live stamp.
+
+    ``synthetic`` is the rendering source's own account of itself, handed down from
+    :func:`render_twin` (B-7 site 2). The badge is derived from it rather than fixed, because this
+    fragment is what gets *saved and sent*: a document asserting "Synthetic Demonstration" over a
+    source reporting ``synthetic=False`` makes a false claim about the data's origin, and no caller
+    of the export path could correct it after the fact. Both wordings come from
+    :func:`src.labels.presentation_card_label`, which owns the two allowed ones.
+    """
     heading = theme.html(title or labels.SYSTEM_NAME)
-    badge = theme.html(labels.SYNTHETIC_DEMONSTRATION_LABEL)
+    badge = theme.html(labels.presentation_card_label("synthetic" if synthetic else "estimate"))
     provenance = theme.html(theme.provenance_label(snapshot.provenance))
     stamp = theme.html(f"{snapshot.mode} · {snapshot.timestamp}")
     return (
@@ -549,6 +557,7 @@ def render_twin(
     theme_name: str = theme.DARK,
     animate: bool = True,
     title: str | None = None,
+    synthetic: bool = True,
 ) -> str:
     """The animated twin as a themed HTML fragment (PRD 19.3/19.4).
 
@@ -558,6 +567,13 @@ def render_twin(
     motion is withheld. The fragment carries its own scoped ``<style>`` (the keyframes) but draws
     every colour and size from the theme variables, so it must sit inside a themed root - use
     :func:`twin_html` or :func:`twin_document` to display or export it on its own.
+
+    ``synthetic`` is what the header badge is derived from, and callers should pass
+    ``provider.capabilities().synthetic`` (B-7 site 2). It is explicit rather than inferred from
+    ``snapshot``, which carries provenance per *value* and says nothing about whether the source is
+    a simulation. It defaults to ``True`` because every current render path is the synthetic
+    demonstration, so the default states the truth for them; a caller rendering a source that
+    reports ``synthetic=False`` has to say so, and then gets "Simulation Estimate" instead.
     """
     palette = theme.theme(theme_name)
     body = _svg(snapshot, equipment, settings.animation, palette, settings.format, animate=animate)
@@ -565,7 +581,7 @@ def render_twin(
         f'<div class="{theme.theme_class(theme_name)}">'
         f"{twin_style()}"
         f'<div class="dt-twin">'
-        f"{_header_html(snapshot, title)}"
+        f"{_header_html(snapshot, title, synthetic=synthetic)}"
         f"{body}"
         f"{_legend_html(palette)}"
         f'<div class="dt-banner">{theme.html(labels.NO_PLANT_CONNECTION_STATEMENT)}</div>'
@@ -689,16 +705,24 @@ def twin_html(
     theme_name: str = theme.DARK,
     animate: bool = True,
     title: str | None = None,
+    synthetic: bool = True,
 ) -> str:
     """The twin as a self-contained fragment including the theme stylesheet.
 
     This is what ``IPython.display.HTML`` should be handed to show the twin on its own: it prepends
     :func:`src.visualization.theme.style_tag` so the ``var(--dt-*)`` the fragment references are
     defined. Inside the full dashboard, which emits the theme stylesheet once, use
-    :func:`render_twin` instead to avoid repeating it.
+    :func:`render_twin` instead to avoid repeating it. ``synthetic`` is passed straight through to
+    the header badge (see :func:`render_twin`).
     """
     return theme.style_tag() + render_twin(
-        snapshot, equipment, settings=settings, theme_name=theme_name, animate=animate, title=title
+        snapshot,
+        equipment,
+        settings=settings,
+        theme_name=theme_name,
+        animate=animate,
+        title=title,
+        synthetic=synthetic,
     )
 
 
@@ -710,15 +734,23 @@ def twin_document(
     theme_name: str = theme.DARK,
     animate: bool = True,
     title: str | None = None,
+    synthetic: bool = True,
 ) -> str:
     """A complete standalone ``.html`` document for the factory demo (PRD 19.3/29 export).
 
     Everything is inlined - the theme stylesheet, the twin CSS, the SVG - so the saved file
-    animates in any browser with no assets, no server and no network (NFR-9).
+    animates in any browser with no assets, no server and no network (NFR-9). ``synthetic`` reaches
+    the header badge through :func:`twin_html`, so a saved document states its own source honestly.
     """
     heading = theme.html(title or labels.full_system_label())
     fragment = twin_html(
-        snapshot, equipment, settings=settings, theme_name=theme_name, animate=animate, title=title
+        snapshot,
+        equipment,
+        settings=settings,
+        theme_name=theme_name,
+        animate=animate,
+        title=title,
+        synthetic=synthetic,
     )
     return (
         "<!doctype html>"

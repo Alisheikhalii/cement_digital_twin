@@ -1,7 +1,8 @@
 # PROJECT STATE — Task #6 handoff
 
 **Purpose:** the file a new session reads first. One line per outstanding Task #6 item, plus the
-current commit and test counts. Created at the end of Wave 3A (`docs/WAVE3A_REPORT.md`).
+current commit and test counts. Created at the end of Wave 3A (`docs/WAVE3A_REPORT.md`); last
+updated at the end of Wave 3B (`docs/WAVE3B_REPORT.md`).
 
 ---
 
@@ -10,10 +11,10 @@ current commit and test counts. Created at the end of Wave 3A (`docs/WAVE3A_REPO
 | | |
 |---|---|
 | **Branch** | `main` |
-| **HEAD after Wave 3A** | the Wave 3A commit, whose parent is `e4dee7a` (`git log --oneline -2`). Not pinned here: a commit cannot contain its own hash. |
-| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → Wave 3A |
-| **Full regression** | **524 passed, 2 xfailed** (~5m52s). Baseline before Wave 3A was 517 passed, 2 xfailed. |
-| **The 2 xfails** | `xfail(strict=True)` B-7 badge pins in `tests/test_task6_provider_contract.py:509,531`. They hold the *correct* behaviour and must stay xfailed until **both** badge sites are fixed. |
+| **HEAD after Wave 3B** | the Wave 3B commit, whose parent is `440602e` (`git log --oneline -2`). Not pinned here: a commit cannot contain its own hash. |
+| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → Wave 3B |
+| **Full regression** | **526 passed, 0 xfailed** (~6m25s). Baseline before Wave 3B was 524 passed, 2 xfailed. |
+| **xfails** | **None.** The two `xfail(strict=True)` B-7 badge pins were cleared by Wave 3B — the badge now derives at both sites and the markers are gone. |
 | **Regression floor** | 428 (directive §4.7). Any drop halts the phase and is investigated — never "fixed" by editing a test. |
 
 ### Frozen layer — verify before and after every wave
@@ -42,7 +43,8 @@ git ls-files -s tests/ | grep -v task6 | md5sum
 | Item | State | One line |
 |---|---|---|
 | **Item 15 requirement text** | **UNRECOVERED** | Directive D-1. Subject area located (Model C / optimization display) but the requirement itself is unknown. Recover from transcript or ask the user. **Task #6 cannot be reported complete while this stands.** |
-| **B-7 badge (2 sites)** | Open | `state.py:570` and `svg_twin.py:530` hard-code `SYNTHETIC_DEMONSTRATION_LABEL`, ignoring `capabilities().synthetic`. Directive D-8. A fix touching only `state.py` leaves the violation live in the twin's HTML — both strict xfails must flip together. |
+| **B-7 badge (2 sites)** | **CLOSED** (Wave 3B) | Both sites derive the badge from `capabilities().synthetic` via `labels.presentation_card_label()`: `DashboardState._header` reads it inline, and `svg_twin` threads an explicit `synthetic: bool` through `twin_document`/`twin_html`/`render_twin`/`_header_html`. Both strict xfails removed. |
+| **`app.py:123` badge derivation** | Open (new) | Follow-up from Wave 3B. `build_document` calls `render_twin` without `synthetic=`, so production takes the `True` default instead of deriving it. Truthful today (synthetic provider) but not derived. One-line fix — but it widens `build_document`'s documented `view(view_id)`-only contract, so it needs the next wave that owns `app.py`. |
 | **BUG 2** | Open | Not started. |
 | **Twin missing-data symmetry** | Open | Not started. |
 | **`TestNfr2Budget`** | Not written | NFR-2 (< 3 s what-if round trip) is the real budget; `configs/dashboard.yaml` `refresh_seconds: 2.0` is **not** a PRD budget (directive D-10). |
