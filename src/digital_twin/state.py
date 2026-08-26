@@ -405,6 +405,18 @@ class WhatIfViewModel:
             "sliders": [dict(item) for item in self.sliders],
         }
 
+    def signature(self) -> dict[str, Any]:
+        """:meth:`describe` with the wall clock excluded - the golden-testable payload for view I.
+
+        The screen is the level a golden test compares, so it is the level that needs this: the only
+        non-reproducible leaf in the whole payload lives at ``view.runtime_s``, and
+        :meth:`WhatIfView.signature` is what drops it. Everything else here - header, mode, sliders -
+        is already reproducible for a fixed frame.
+        """
+        payload = self.describe()
+        payload["view"] = self.view.signature()
+        return payload
+
 
 # =============================================================================
 # View J - AI Optimization / Decision Support
@@ -431,6 +443,17 @@ class OptimizationViewModel:
             "view": self.view.describe(),
             "quality_descriptions": dict(self.quality_descriptions),
         }
+
+    def signature(self) -> dict[str, Any]:
+        """:meth:`describe` with the wall clock excluded - the golden-testable payload for view J.
+
+        As :meth:`WhatIfViewModel.signature`, except that view J's duration appears at two depths
+        (``view.runtime_s`` and ``view.payload.runtime_s``); :meth:`OptimizationView.signature` drops
+        both.
+        """
+        payload = self.describe()
+        payload["view"] = self.view.signature()
+        return payload
 
 
 # =============================================================================

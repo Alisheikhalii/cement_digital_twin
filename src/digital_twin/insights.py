@@ -14,7 +14,7 @@ on :class:`~src.digital_twin.provenance.Value`, and confidence is the categorica
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any, ClassVar, Mapping, Sequence
 
 from src.anomaly_detection.detector import (
     INCONCLUSIVE_HYPOTHESIS,
@@ -259,6 +259,37 @@ class OptimizationView:
             "payload": dict(self.payload),
         }
 
+    #: Fields of :meth:`describe` that measure this machine on this run rather than the result. The
+    #: name and the intent are taken from
+    #: :attr:`~src.optimization.optimizer.OptimizationResult.NON_REPRODUCIBLE_FIELDS`: the layer
+    #: below already answers "what does reproducible exclude?" for this same field, and this layer
+    #: answers it the same way rather than inventing a second answer.
+    NON_REPRODUCIBLE_FIELDS: ClassVar[tuple[str, ...]] = ("runtime_s",)
+
+    def signature(self) -> dict[str, Any]:
+        """:meth:`describe` minus the wall clock - what "reproducible" means for view J.
+
+        Two reads of the same optimizer run return an *identical* signature, field for field: same
+        headline, gates, refusal reasons, rejection count, evaluated count and payload.
+
+        ``runtime_s`` is stripped at **both** depths it appears, because this view carries the same
+        measurement twice: its own field, and the copy inside ``payload`` - which is
+        ``OptimizationResult.describe()``, whose own :meth:`signature` drops that field for exactly
+        this reason. Stripping only the outer one leaves the view non-reproducible for the less
+        obvious of the two reasons, which is precisely the trap that made this hard to see.
+
+        The duration is deliberately *not* removed from :meth:`describe`. A panel reporting how long
+        the search took is stating a true fact about the run that produced it; only the *comparison*
+        excludes it. See ``SyntheticDataProvider.run_what_if`` for why it is measured at all.
+        """
+        payload = self.describe()
+        nested = payload.get("payload")
+        for field_name in self.NON_REPRODUCIBLE_FIELDS:
+            payload.pop(field_name, None)
+            if isinstance(nested, dict):
+                nested.pop(field_name, None)
+        return payload
+
     @classmethod
     def unavailable(cls, timestamp: str, mode: str = "NORMAL", reason: str = "") -> "OptimizationView":
         return cls(
@@ -328,6 +359,24 @@ class WhatIfView:
             "unavailable_reason": self.unavailable_reason,
             "panel": dict(self.panel),
         }
+
+    #: As :attr:`OptimizationView.NON_REPRODUCIBLE_FIELDS` - the wall clock, and nothing else.
+    NON_REPRODUCIBLE_FIELDS: ClassVar[tuple[str, ...]] = ("runtime_s",)
+
+    def signature(self) -> dict[str, Any]:
+        """:meth:`describe` minus the wall clock - what "reproducible" means for view I.
+
+        Only the view's own field is stripped. Unlike :meth:`OptimizationView.signature`, ``panel``
+        needs no second pass: the PRD 16.3 panel carries no duration of its own, because
+        :meth:`from_result` takes ``runtime_s`` as an argument rather than the engine stamping one
+        (see that method's note on why a reproducible engine cannot own such a field). That is a
+        measured fact about the payload, not an assumption - two calls on one frame differ in this
+        one leaf and no other.
+        """
+        payload = self.describe()
+        for field_name in self.NON_REPRODUCIBLE_FIELDS:
+            payload.pop(field_name, None)
+        return payload
 
     @classmethod
     def unavailable(cls, timestamp: str, mode: str = "NORMAL", reason: str = "") -> "WhatIfView":
