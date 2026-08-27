@@ -2,7 +2,7 @@
 
 **Purpose:** the file a new session reads first. One line per outstanding Task #6 item, plus the
 current commit and test counts. Created at the end of Wave 3A (`docs/WAVE3A_REPORT.md`); last
-updated at the end of Wave 3C (`docs/WAVE3C_REPORT.md`).
+updated at the end of Wave 3D (`docs/WAVE3D_REPORT.md`).
 
 ---
 
@@ -10,10 +10,10 @@ updated at the end of Wave 3C (`docs/WAVE3C_REPORT.md`).
 
 | | |
 |---|---|
-| **Branch** | `task6/wave-3c` — pushed, **not merged**. Awaiting human review. |
-| **HEAD after Wave 3C** | the Wave 3C commit, whose parent is `8cbda49` (`git log --oneline -2`). Not pinned here: a commit cannot contain its own hash. |
-| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → Wave 3C |
-| **Full regression** | **537 passed, 0 xfailed** (~4m28s). Baseline before Wave 3C was 526 passed; +11 new reproducibility tests. |
+| **Branch** | `task6/wave-3d` — pushed, **not merged**. Awaiting human review. Wave 3C is also still unmerged on `task6/wave-3c`. |
+| **HEAD after Wave 3D** | the Wave 3D commit, whose parent is `b2915e3` (`git log --oneline -2`). Not pinned here: a commit cannot contain its own hash. |
+| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D |
+| **Full regression** | **537 passed, 0 xfailed.** Unchanged by Wave 3D, which is documentation-only: no test was added, changed or removed. |
 | **xfails** | **None.** |
 | **Regression floor** | 428 (directive §4.7). Any drop halts the phase and is investigated — never "fixed" by editing a test. |
 
@@ -49,9 +49,11 @@ git ls-files -s tests/ | grep -v task6 | md5sum
 | **BUG 2** | **CLOSED** (Wave 3C) | Views I/J were non-reproducible only in `runtime_s` — view J carried it at two depths (`view.runtime_s` *and* `view.payload.runtime_s`). Fixed by **excluding it from comparison**: a `signature()` method on `WhatIfView`/`OptimizationView` and both screen view models, reusing the frozen layer's own `OptimizationResult.NON_REPRODUCIBLE_FIELDS` convention. `synthetic.py` is byte-identical to `main` — zero production change. An AST guard (mutation-tested) fails if production ever hardcodes the duration. Views I/J are now golden-testable; **no golden file written yet.** |
 | **Twin missing-data symmetry** | Open | Not started. |
 | **`TestNfr2Budget`** | Not written | NFR-2 (< 3 s what-if round trip) is the real budget; `configs/dashboard.yaml` `refresh_seconds: 2.0` is **not** a PRD budget (directive D-10). |
-| **`DATA_DICTIONARY.md`** | Missing | PRD §35 document. |
-| **`DEMO_GUIDE.md`** | Missing | PRD §35 document. |
-| **Item 17 Factory Presentation Mode** | Missing | Two config keys exist, no renderer. Flagged in the directive as "a critical requirement". |
+| **`DATA_DICTIONARY.md`** | **DONE** (Wave 3D) | PRD §35 document. All 62 rows derived from `TagSpec` in `src/schema.py` and verified programmatically against it (0 content mismatches, 0 range mismatches). Canonical MJ conversion per PRD §9.2; every `ASSUMPTION` value cross-checked against `configs/` and `SIMULATION_ASSUMPTIONS.md`. |
+| **`DEMO_GUIDE.md`** | **DONE** (Wave 3D) | PRD §35 document. Demos 1–5 + Presentation Mode, grounded in what `app.py` does today. §9 lists 10 PRD demo capabilities not built. Three claims were corrected by measurement — see `WAVE3D_REPORT.md` §2.1. |
+| **Item 17 Factory Presentation Mode** | Missing | Two config keys exist, no renderer. Flagged in the directive as "a critical requirement". Its true extent is now tabulated in `DEMO_GUIDE.md` §7 (config keys + `PresentationSettings` + `presentation_card_label()`; no view id, renderer, KPI cards, five-stage chain or refresh loop). |
+| **`app.py` docstring timing** | Open (new, Wave 3D) | The module docstring advertises `--skip-models` at "~0.4 s"; measured **4.5 s** across two runs. A ten-view build with models on measured 21.0 s reported / 25.7 s wall. Not fixed — Wave 3D changed no production file. Needs the next wave that owns `app.py`. |
+| **Experimental What-if Mode unreachable** | Open (new, Wave 3D) | Fully implemented and tested in the view layer, but no caller can select it: `DashboardState.view()` passes only `frame`, so `mode` keeps its `"NORMAL"` default, and `app.py` has no `--mode` flag (nor `--change`). `DEMO_GUIDE.md` §6.2 documents the Python-only workaround. |
 | **Item 19 "Run Demo" sequence** | Missing | Step count (11) is E3/unverified — do not implement a count as a requirement. |
 | **Item 22 enforcement scans** | Partial | Provenance-separation + determinism are E1-attested and now partly covered; the no-hard-coded-number and no-confidence-% scans do not exist. |
 | **Items 2–13 renderers** | Payload only | 8 of 10 views have no renderer; only the SVG twin does. Payloads are built and correct — **preserve, do not rewrite.** |
