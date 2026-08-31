@@ -250,6 +250,24 @@ class OptimizationView:
         value = self.payload.get("baselines")
         return value if isinstance(value, Mapping) else None
 
+    def predicted_states(self) -> Mapping[str, Any] | None:
+        """The PRD 14.4 multi-horizon predicted state (directive item 10).
+
+        This is ``Recommendation.describe()["predicted_state_by_horizon"]`` unchanged:
+        ``{"t+5min": {target: {value, unit, uncertainty, uncertainty_method, ...}}}`` for
+        whatever horizons Model A actually produced for the recommended candidate. It is Model A
+        output - the PREDICTION channel - and reaches this view *inside* the recommendation
+        payload without changing channel: the renderer must never merge it with observed values
+        into one series (the two-channel rule of directive item 10). ``None`` means there is no
+        recommendation to predict from (a refused run); an empty mapping means the recommendation
+        carries no horizon predictions, which the renderer states rather than fills in.
+        """
+        recommendation = self.recommendation()
+        if recommendation is None:
+            return None
+        value = recommendation.get("predicted_state_by_horizon")
+        return value if isinstance(value, Mapping) else None
+
     def blocking_gates(self) -> tuple[Mapping[str, Any], ...]:
         return tuple(item for item in self.gates if item.get("blocking"))
 

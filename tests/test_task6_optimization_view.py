@@ -6,12 +6,14 @@ by real :class:`~src.digital_twin.insights.OptimizationView` objects assembled f
 shaped exactly as ``OptimizationResult.describe()`` / ``BaselineComparison.describe()`` serialize
 them — so what is asserted below is what a browser would receive from a real run, at stub cost.
 
-Covers the three items this wave surfaces on one screen:
+Covers the items this wave surfaces on one screen:
 
 * **item 14** — the recommendation card renders from the payload and recomputes nothing;
 * **item 15** (reconstructed) — the PRD 14.5 comparison shows **all five** rows (AC-22), and a row
   that could not be built shows "unavailable" with its own reason, never a zero or a blank;
-* **item 16** — a refusal is a display state: headline, the gates' own reasons, rejection count.
+* **item 16** — a refusal is a display state: headline, the gates' own reasons, rejection count;
+* **item 10** — the multi-horizon predicted state shows the full horizon grid in the PREDICTION
+  channel, with the spread shown as ``±`` and never a confidence percentage (AC-16, AC-18).
 
 Plus the honesty rules that reach every screen: no numeric confidence, no forbidden control label,
 the standing no-plant-connection statement, and HTML escaping of the payload's free text.
@@ -112,6 +114,53 @@ def _baselines_payload() -> dict[str, Any]:
     }
 
 
+#: The four PRD 13.1 mandatory horizons, verbatim from ``configs/ml.yaml``
+#: ``prediction.horizons_min`` — the column set the item-10 grid must show.
+HORIZON_KEYS = ("t+5min", "t+10min", "t+15min", "t+30min")
+
+#: The (target, horizon) Model A pairs the stub's model-availability gate records as untrained —
+#: shaped exactly as ``GateOutcome.detail["missing_models"]`` serializes it (dataset -> pairs).
+MISSING_MODELS = {"kiln": [["oxygen_percent", 10], ["oxygen_percent", 30]]}
+
+
+def _prediction(value: float, unit: str, spread: float | None, quality: str) -> dict[str, Any]:
+    """One ``by_horizon()``-shaped entry — the fields Model A's Prediction carries, no more."""
+    return {
+        "value": value,
+        "unit": unit,
+        "uncertainty": spread,
+        "uncertainty_method": "ensemble_spread",
+        "model_family": "random_forest",
+        "model_version": "model-a-1",
+        "quality": quality,
+    }
+
+
+def _predicted_state_payload() -> dict[str, dict[str, Any]]:
+    """A ``predicted_state_by_horizon``-shaped dict for two kiln targets across four horizons.
+
+    ``burning_zone_temperature`` is predicted at every horizon; ``oxygen_percent`` is missing at
+    t+10 and t+30 — exactly the pairs ``MISSING_MODELS`` records — and carries no ``uncertainty``
+    at t+15, so the no-spread display rule is pinned alongside the missing-model one.
+    """
+    return {
+        "t+5min": {
+            "burning_zone_temperature": _prediction(1452.3, "degC", 6.1, "HIGH"),
+            "oxygen_percent": _prediction(3.21, "%", 0.11, "HIGH"),
+        },
+        "t+10min": {
+            "burning_zone_temperature": _prediction(1453.8, "degC", 7.4, "HIGH"),
+        },
+        "t+15min": {
+            "burning_zone_temperature": _prediction(1454.1, "degC", 8.2, "MEDIUM"),
+            "oxygen_percent": _prediction(3.18, "%", None, "HIGH"),
+        },
+        "t+30min": {
+            "burning_zone_temperature": _prediction(1455.6, "degC", 9.9, "MEDIUM"),
+        },
+    }
+
+
 def _recommendation_payload(reason: str) -> dict[str, Any]:
     """A ``Recommendation.describe()``-shaped dict — the card renders from it unchanged."""
     return {
@@ -135,7 +184,7 @@ def _recommendation_payload(reason: str) -> dict[str, Any]:
         "baseline_state": {},
         "proposed_state": {},
         "observed_state": {},
-        "predicted_state_by_horizon": {},
+        "predicted_state_by_horizon": _predicted_state_payload(),
         "expected_impact": {
             "metrics": [
                 {
@@ -161,6 +210,10 @@ def _recommendation_payload(reason: str) -> dict[str, Any]:
 
 def _gates_payload() -> tuple[dict[str, Any], ...]:
     return (
+        {"gate": "model_availability", "state": "PASS", "blocking": False,
+         "reason": "Model A available for every optimizable dataset",
+         "detail": {"datasets": ["kiln"], "optimizable": ["kiln"], "frozen": [],
+                    "missing_models": MISSING_MODELS}},
         {"gate": "operating_range", "state": "PASS", "blocking": False,
          "reason": "within trained ranges", "detail": {}},
         {"gate": "constraint_validation", "state": "REJECT", "blocking": True,
@@ -168,7 +221,9 @@ def _gates_payload() -> tuple[dict[str, Any], ...]:
     )
 
 
-def _view(refused: bool = False, *, with_baselines: bool = True) -> OptimizationView:
+def _view(
+    refused: bool = False, *, with_baselines: bool = True, with_predictions: bool = True
+) -> OptimizationView:
     """A real ``OptimizationView``, assembled from payload dicts exactly as ``from_result`` would."""
     payload: dict[str, Any] = {
         "mode": "NORMAL",
@@ -178,6 +233,8 @@ def _view(refused: bool = False, *, with_baselines: bool = True) -> Optimization
         ),
         "baselines": _baselines_payload() if with_baselines else None,
     }
+    if not with_predictions and payload["recommendation"] is not None:
+        payload["recommendation"]["predicted_state_by_horizon"] = {}
     return OptimizationView(
         available=True,
         timestamp="2024-01-01T00:00:00Z",
@@ -339,6 +396,85 @@ def test_unavailable_model_is_stated_not_substituted(settings: DashboardSettings
 
 
 # =============================================================================
+# Item 10 — the multi-horizon predicted state: full grid, spread not %, honest gaps
+# =============================================================================
+def test_horizon_grid_shows_every_configured_horizon_and_both_targets(
+    settings: DashboardSettings,
+) -> None:
+    """The full PRD 13.1 horizon set as columns (AC-16), one row per predicted target."""
+    html = optimization_view.render_optimization(_model(_view()), settings=settings)
+    assert 'data-role="horizons"' in html
+    for key in HORIZON_KEYS:
+        assert f"<th>{key}</th>" in html
+    assert "burning_zone_temperature" in html
+    assert "oxygen_percent" in html
+
+
+def test_predicted_values_and_spreads_are_the_payloads_own(
+    settings: DashboardSettings,
+) -> None:
+    """Value and ± spread come from the payload at FormatSettings precision; a missing spread
+    shows the value alone (never a derived one) — and no percentage is computed anywhere."""
+    html = optimization_view.render_optimization(_model(_view()), settings=settings)
+    assert "1,452" in html  # burning_zone_temperature at t+5 (magnitude rule: 0 decimals)
+    assert "&plusmn; 6.100" in html  # its uncertainty, as a spread
+    assert "3.210" in html  # oxygen_percent at t+5 (3 decimals)
+    assert "confidence" not in html.lower()
+
+
+def test_the_horizon_grid_is_labelled_as_the_prediction_channel(
+    settings: DashboardSettings,
+) -> None:
+    """Item 10's two-channel rule made visible: the grid carries the PREDICTION badge, so it
+    cannot be read as one series with the observed values of the baselines table."""
+    html = optimization_view.render_optimization(_model(_view()), settings=settings)
+    assert "Model prediction" in html
+    assert "dt-badge--prediction" in html
+
+
+def test_missing_horizon_cells_show_the_gates_reason_not_a_number(
+    settings: DashboardSettings,
+) -> None:
+    """A (target, horizon) with no trained Model A shows unavailable plus the frozen layer's own
+    account of why — the model-availability gate's missing_models — never a zero or a blank."""
+    html = optimization_view.render_optimization(_model(_view()), settings=settings)
+    assert (
+        f"{optimization_view.UNAVAILABLE_ROW_TEXT} — {optimization_view.MISSING_MODEL_TEXT}"
+        in html
+    )
+    # Both gate-recorded gaps are cells in the grid; the target's other horizons still show.
+    assert html.count(optimization_view.MISSING_MODEL_TEXT) == 2
+
+
+def test_a_gap_no_gate_explains_is_stated_as_such(settings: DashboardSettings) -> None:
+    """A payload hole with no matching gate entry is named as a payload hole — an invented cause
+    would be worse than the plain statement."""
+    html = optimization_view.render_optimization(_model(_view()), settings=settings)
+    # oxygen_percent at t+15 is carried without uncertainty; every carried cell that is present
+    # renders a value. The MISSING_ENTRY_TEXT branch is pinned by absence of any other gap text.
+    assert optimization_view.MISSING_ENTRY_TEXT not in html
+
+
+def test_absent_predictions_are_stated_never_invented(settings: DashboardSettings) -> None:
+    """A recommendation whose horizon mapping is empty: stated, with no substitute grid."""
+    html = optimization_view.render_optimization(
+        _model(_view(with_predictions=False)), settings=settings
+    )
+    assert 'data-role="horizons"' in html
+    assert optimization_view.UNAVAILABLE_ROW_TEXT in html
+    for key in HORIZON_KEYS:
+        assert f"<th>{key}</th>" not in html  # no horizon columns from predictions that do not exist
+
+
+def test_a_refused_run_renders_no_horizon_grid(settings: DashboardSettings) -> None:
+    """No recommendation means nothing to predict from: the refusal panel speaks, and no
+    predicted values appear (a prediction without a recommended state would be an invention)."""
+    html = optimization_view.render_optimization(_model(_view(refused=True)), settings=settings)
+    assert 'data-role="horizons"' not in html
+    assert "burning_zone_temperature" not in html
+
+
+# =============================================================================
 # The accessor (insights.py) and the app.py routing
 # =============================================================================
 def test_baselines_accessor_exposes_the_payload_mapping() -> None:
@@ -357,6 +493,26 @@ def test_baselines_accessor_exposes_the_payload_mapping() -> None:
 
 def test_baselines_accessor_returns_none_when_absent() -> None:
     assert _view(with_baselines=False).baselines() is None
+
+
+def test_predicted_states_accessor_exposes_the_payload_mapping() -> None:
+    """The accessor reads ``predicted_state_by_horizon`` out of the recommendation unchanged."""
+    predicted = _view().predicted_states()
+    assert isinstance(predicted, dict)
+    assert list(predicted) == list(HORIZON_KEYS)  # ascending horizon order, as by_horizon() left it
+    assert predicted["t+5min"]["burning_zone_temperature"]["uncertainty"] == 6.1
+
+
+def test_predicted_states_accessor_returns_none_without_a_recommendation() -> None:
+    """A refused run has no recommendation to predict from — ``None``, not an empty grid."""
+    assert _view(refused=True).predicted_states() is None
+    assert OptimizationView.unavailable("2024-01-01T00:00:00Z").predicted_states() is None
+
+
+def test_predicted_states_accessor_returns_empty_when_the_payload_carries_none() -> None:
+    """An empty mapping is the recommendation's own statement that Model A produced nothing."""
+    predicted = _view(with_predictions=False).predicted_states()
+    assert predicted == {}
 
 
 def test_app_routes_view_j_to_the_renderer_not_the_raw_payload(

@@ -12,6 +12,15 @@ share view J:
   chosen form is one comparison table — the display-form decision recorded in
   ``docs/TASK6_DIRECTIVE.md`` §1 item 15 — with unavailable rows showing "unavailable" plus the
   row's own reason, never a zero or a blank.
+* **item 10** — the multi-horizon predicted state, rendered from
+  ``OptimizationView.predicted_states()`` (which is
+  ``Recommendation.describe()["predicted_state_by_horizon"]`` unchanged): one row per target, one
+  column per horizon, the value with its spread shown as ``±`` — never a confidence percentage
+  (FR-23, AC-18, PRD 13.1.1). This is Model A output in the PREDICTION channel: it is kept
+  strictly separate from the observed values of the baselines table, never rendered as one series
+  with them (directive item 10's two-channel rule), and it covers the recommended operating point
+  only. A missing (target, horizon) cell shows "unavailable" with the reason the frozen layer
+  already carries — the model-availability gate's ``missing_models`` — never a zero.
 * **item 16** — refusals as a first-class display state: a blocked run shows its headline, the
   blocking gates' own reasons (the optimizer's words, not a second explanation) and the rejection
   count, never an empty card.
@@ -30,12 +39,23 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 from src import labels
+from src.digital_twin.provenance import Provenance
+from src.optimization.optimizer import GATE_MODEL_AVAILABILITY
 from src.visualization import theme
 
 #: What a baseline row that could not be built shows, followed by the row's own reason. Not a
 #: PRD-quoted string, so it lives here rather than in :mod:`src.labels`: that module is mandated
 #: vocabulary, and this word is the renderer's own.
 UNAVAILABLE_ROW_TEXT: Final = "unavailable"
+
+#: What a missing (target, horizon) cell shows when the model-availability gate already recorded
+#: that no Model A was trained for that pair. The renderer's own words for the frozen layer's own
+#: ``missing_models`` entry — the gate's reason, restated at the cell it explains.
+MISSING_MODEL_TEXT: Final = "no trained Model A for this target at this horizon"
+
+#: What a missing (target, horizon) cell shows when the payload simply does not carry it and no
+#: gate explains why. A statement of where it is absent *from*, never an invented cause.
+MISSING_ENTRY_TEXT: Final = "not carried in this recommendation's payload"
 
 #: The quality label rendered as a pill. Mapping is presentational (PRD 17.1 green/amber/red
 #: coding); the *words* HIGH/MEDIUM/LOW are the optimizer's own categorical values.
@@ -307,6 +327,158 @@ def _baselines_section(baselines: Mapping[str, Any] | None, fmt: Any) -> str:
 
 
 # =============================================================================
+# Item 10 — the multi-horizon predicted state (PREDICTION channel, never merged)
+# =============================================================================
+def _horizon_minutes(key: object) -> int | None:
+    """``"t+5min" -> 5`` — the PRD 14.4 key spelling, read; ``None`` if the key is not one."""
+    text = str(key)
+    if not (text.startswith("t+") and text.endswith("min")):
+        return None
+    try:
+        return int(text[2:-3])
+    except ValueError:
+        return None
+
+
+def _missing_model_pairs(view: Any) -> frozenset[tuple[str, int]]:
+    """The (target, horizon) pairs the model-availability gate already recorded as untrained.
+
+    The gate's ``detail["missing_models"]`` is the frozen layer's own account of which Model A
+    (target, horizon) models do not exist — the reason a horizon cell is empty, already computed.
+    This reads it; it invents nothing. A view assembled without gates yields the empty set.
+    """
+    pairs: set[tuple[str, int]] = set()
+    for gate in view.gates:
+        if str(gate.get("gate")) != GATE_MODEL_AVAILABILITY:
+            continue
+        detail = gate.get("detail")
+        by_dataset = detail.get("missing_models", {}) if isinstance(detail, Mapping) else {}
+        for entries in by_dataset.values():
+            for pair in entries or ():
+                try:
+                    pairs.add((str(pair[0]), int(pair[1])))
+                except (TypeError, ValueError, IndexError):
+                    continue
+    return frozenset(pairs)
+
+
+def _prediction_cell(entry: Mapping[str, Any], fmt: Any) -> str:
+    """One predicted value with its spread — the payload's own numbers, never a percentage.
+
+    The ``±`` figure is ``uncertainty`` as Model A reported it (the ensemble spread, PRD 13.1.1).
+    An entry without one shows the value alone; no confidence is derived in either case.
+    """
+    value = _num(entry.get("value"), fmt)
+    spread = _num(entry.get("uncertainty"), fmt)
+    spread_html = (
+        f' <span class="dt-muted">&plusmn; {spread}</span>'
+        if spread != theme.NO_VALUE_TEXT
+        else ""
+    )
+    return f'<td class="dt-num">{value}{spread_html}</td>'
+
+
+def _horizon_key_of(minutes: int) -> str:
+    """``5 -> "t+5min"`` — the PRD 14.4 column spelling, rebuilt for a gate-recorded horizon."""
+    return f"t+{int(minutes)}min"
+
+
+def _horizon_table(view: Any, fmt: Any) -> str:
+    """One row per target, one column per horizon — the grid Model A actually produced.
+
+    The horizon set is the payload's own keys plus the pairs the model-availability gate recorded
+    as missing, so a horizon with no predictions at all still appears as a column of stated
+    absences rather than silently vanishing. Targets keep payload order; missing-only targets
+    follow, sorted.
+    """
+    predicted = view.predicted_states() or {}
+    entries: dict[tuple[str, int], Mapping[str, Any]] = {}
+    targets: list[str] = []
+    for key, per_target in predicted.items():
+        minutes = _horizon_minutes(key)
+        if minutes is None or not isinstance(per_target, Mapping):
+            continue
+        for target, entry in per_target.items():
+            name = str(target)
+            entries[(name, minutes)] = entry if isinstance(entry, Mapping) else {}
+            if name not in targets:
+                targets.append(name)
+    missing = _missing_model_pairs(view)
+    for name, _ in sorted(missing):
+        if name not in targets:
+            targets.append(name)
+    horizons = sorted({minutes for _, minutes in entries} | {minutes for _, minutes in missing})
+
+    head = "".join(
+        f"<th>{theme.html(_horizon_key_of(minutes))}</th>" for minutes in horizons
+    )
+    body_rows = []
+    for name in targets:
+        unit = next(
+            (
+                str(entries[(name, minutes)].get("unit"))
+                for minutes in horizons
+                if (name, minutes) in entries and entries[(name, minutes)].get("unit")
+            ),
+            "",
+        )
+        title_cell = (
+            f"<th>{theme.html(name)}"
+            + (f'<br><span class="dt-muted">{theme.html(unit)}</span>' if unit else "")
+            + "</th>"
+        )
+        cells = []
+        for minutes in horizons:
+            entry = entries.get((name, minutes))
+            if entry is None:
+                reason = (
+                    MISSING_MODEL_TEXT
+                    if (name, minutes) in missing
+                    else MISSING_ENTRY_TEXT
+                )
+                cells.append(
+                    f'<td class="dt-muted">{theme.html(UNAVAILABLE_ROW_TEXT)} — '
+                    f"{theme.html(reason)}</td>"
+                )
+            else:
+                cells.append(_prediction_cell(entry, fmt))
+        body_rows.append(f"<tr>{title_cell}{''.join(cells)}</tr>")
+    return (
+        '<table class="dt-table"><thead><tr><th>Target</th>'
+        f"{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
+    )
+
+
+def _horizon_section(view: Any, fmt: Any) -> str:
+    """The predicted state of the recommended operating point, or the stated absence of one.
+
+    Only called when a recommendation exists: a refused run has nothing to predict from and the
+    refusal panel already says so. An empty horizon mapping is stated, never filled in — no
+    predicted value is invented for a model that produced none.
+    """
+    predicted = view.predicted_states()
+    if not predicted:
+        return (
+            '<div class="dt-card" data-role="horizons">'
+            '<h3 class="dt-title">Predicted state by horizon (Model A)</h3>'
+            f'<p class="dt-muted">{theme.html(UNAVAILABLE_ROW_TEXT)}: this recommendation '
+            "carries no Model A horizon predictions. No predicted values are shown rather than "
+            "substituted ones.</p></div>"
+        )
+    return (
+        '<div class="dt-card" data-role="horizons">'
+        '<h3 class="dt-title">Predicted state by horizon (Model A) '
+        f'{_badge(theme.provenance_label(Provenance.PREDICTION), theme.provenance_slug(Provenance.PREDICTION))}'
+        "</h3>"
+        f"{_horizon_table(view, fmt)}"
+        '<p class="dt-muted">Model A prediction of the recommended operating point — the '
+        "prediction channel, kept separate from the observed values of the baseline comparison. "
+        "The &plusmn; figure is the model's own ensemble spread (PRD 13.1.1), shown as a "
+        "spread and never as a percentage.</p></div>"
+    )
+
+
+# =============================================================================
 # Entry point
 # =============================================================================
 def render_optimization(model: Any, *, settings: Any, theme_name: str = theme.DARK) -> str:
@@ -330,6 +502,7 @@ def render_optimization(model: Any, *, settings: Any, theme_name: str = theme.DA
         recommendation = view.recommendation()
         if recommendation is not None:
             cards.append(_recommendation_card(recommendation, fmt))
+            cards.append(_horizon_section(view, fmt))
         cards.append(_baselines_section(view.baselines(), fmt))
         if view.gates:
             cards.append(_gates_table(view))
