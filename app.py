@@ -50,7 +50,7 @@ from typing import Any
 from src import labels
 from src.config import SCENARIOS, Config, load_config
 from src.digital_twin.state import VIEWS
-from src.visualization import svg_twin, theme
+from src.visualization import optimization_view, svg_twin, theme
 
 DEFAULT_OUT = Path("reports") / "task6_dashboard.html"
 DEFAULT_VIEWS = ("B",)
@@ -66,6 +66,21 @@ def _is_twin(model: Any) -> bool:
     screens, so this module needs no import-time knowledge of which ids are twins.
     """
     return hasattr(model, "line") and hasattr(model, "snapshot")
+
+
+def _is_optimization(model: Any) -> bool:
+    """True for the AI Optimization screen (J), whose view model carries an ``OptimizationView``.
+
+    Duck-typed on the accessors that view's inner view exposes and no other screen's does
+    (:meth:`~src.digital_twin.insights.OptimizationView.recommendation` / ``baselines`` /
+    ``blocking_gates``), so the routing stays shape-based like :func:`_is_twin`.
+    """
+    view = getattr(model, "view", None)
+    return (
+        hasattr(view, "recommendation")
+        and hasattr(view, "baselines")
+        and hasattr(view, "blocking_gates")
+    )
 
 
 def _heading_html(model: Any, view_id: str) -> str:
@@ -126,6 +141,10 @@ def build_document(
                     settings=settings,
                     theme_name=theme_name,
                     animate=animate,
+                )
+            elif _is_optimization(model):
+                body = optimization_view.render_optimization(
+                    model, settings=settings, theme_name=theme_name
                 )
             else:
                 body = _payload_html(model)

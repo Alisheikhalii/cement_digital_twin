@@ -271,6 +271,22 @@ recommendation shown on its own, or against a single "before" number, would not 
 | 4 | Digital Twin Baseline (rule engine) | `digital_twin_baseline` | twin simulation |
 | 5 | AI-Optimized Operating Point | `ai_optimized_operating_point` | twin simulation |
 
+#### Chosen display form (Wave View J, 2026-08-31)
+
+**View J (AI Optimization) is the home of this comparison, not the Time-Series Explorer.** PRD §17
+row 6 ("baseline vs optimized overlay") is a *chart* requirement of a distinct, generic kind —
+zoomable/selectable tag charts "across all tags" whose selection feeds AC-3 (Model A feature
+importance); it names no five-row set, no §14.5, and nothing specific to Model C. §14.5 by contrast
+opens "Every optimization demonstration reports …", and view 4's own row in §17 is the AI
+Optimization screen — so the comparison belongs there. Within PRD §17.1's delegated latitude for
+rendering, the chosen form is a **single five-row comparison table** (one row per §14.5 baseline,
+columns = the shared metric set, plus the row's source label and detail), rendered from
+`BaselineComparison.table()` verbatim with unavailable rows showing "unavailable" plus their
+`detail` reason — never a zero or blank. A table, not overlaid curves, because §14.5 asks for five
+named *conditions* compared over one metric set, not time series; the metric values are steady-state
+or window aggregates, so an overlay would imply a time axis the data does not have. This is an
+implementation decision, not a new requirement.
+
 #### Why this, and not something else — the inference, stated so it can be attacked
 
 1. **The band is E1-fixed.** Item 15 sits between item 14 (the recommendation card) and item 16

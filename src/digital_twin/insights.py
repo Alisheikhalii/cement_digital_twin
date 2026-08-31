@@ -238,6 +238,18 @@ class OptimizationView:
         value = self.payload.get("recommendation")
         return value if isinstance(value, Mapping) else None
 
+    def baselines(self) -> Mapping[str, Any] | None:
+        """The PRD 14.5 five-row baseline comparison (directive item 15, reconstructed).
+
+        This is ``BaselineComparison.describe()`` exactly as
+        :meth:`OptimizationResult.describe` serialized it under ``"baselines"`` - five rows,
+        available ones and unavailable ones, over the one shared metric set. It reads what the
+        frozen layer already computed and recomputes nothing; ``None`` means the optimizer ran
+        without building the comparison, which the renderer states rather than fills in.
+        """
+        value = self.payload.get("baselines")
+        return value if isinstance(value, Mapping) else None
+
     def blocking_gates(self) -> tuple[Mapping[str, Any], ...]:
         return tuple(item for item in self.gates if item.get("blocking"))
 
