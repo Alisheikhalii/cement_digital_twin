@@ -23,6 +23,7 @@ Self-contained on purpose: no shared ``conftest.py`` fixture, so this module run
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -387,3 +388,60 @@ def test_app_keeps_the_payload_fallback_for_other_non_twin_views(
         StubState({"G": OtherView()}), ["G"], settings=settings
     )
     assert "dt-app__payload" in html  # unchanged behaviour for views without a renderer
+
+
+# =============================================================================
+# Golden regression — the renderer's whole output, pinned (Wave View J closeout)
+# =============================================================================
+#: The stored render of the stub payload above. Regenerate after a *deliberate* renderer change:
+#:
+#:     python -c "from pathlib import Path; from tests.test_task6_optimization_view import \
+#: _model, _view; from src.digital_twin.settings import DashboardSettings; \
+#: from src.visualization import optimization_view; \
+#: Path('tests/golden/view_j_normal.html').write_bytes(optimization_view.render_optimization(\
+#: _model(_view()), settings=DashboardSettings.from_config()).encode('utf-8'))"
+#:
+#: Written with ``write_bytes`` so the fixture keeps its LF newlines in the repository; the
+#: comparison below normalises either way, because ``core.autocrlf`` checkouts differ by machine.
+GOLDEN_PATH = Path(__file__).parent / "golden" / "view_j_normal.html"
+
+GOLDEN_HINT = (
+    "view J's renderer no longer matches its golden file. This is a REGRESSION unless the renderer "
+    "was deliberately changed - in which case regenerate the fixture with the command in the "
+    "GOLDEN_PATH comment and say so in the commit message. The golden payload is the stub built by "
+    "_view() in this module: fixed timestamps, no measured durations, no wall clock, so nothing "
+    "runtime-dependent is pinned."
+)
+
+
+def _golden() -> str:
+    return GOLDEN_PATH.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
+def test_the_renderer_is_byte_stable_for_a_fixed_payload(settings: DashboardSettings) -> None:
+    """The precondition the golden file rests on: same payload in, same bytes out.
+
+    The twin's convention (``test_task6_twin.py``), restated for this renderer: two renders in one
+    process must be byte-identical, which is what would catch a wall clock, a random draw or an
+    unordered iteration leaking onto the render path - before the golden file is blamed.
+    """
+    first = optimization_view.render_optimization(_model(_view()), settings=settings)
+    second = optimization_view.render_optimization(_model(_view()), settings=settings)
+    assert first == second, GOLDEN_HINT
+
+
+def test_the_render_matches_the_golden_file(settings: DashboardSettings) -> None:
+    """The whole output, pinned byte for byte - a silent formatting or wording change fails here.
+
+    Every string assertion above names one property; this one holds the *shape of the whole panel*
+    at once, so a change no single property test thought to name (a reordered attribute, a changed
+    class name, a reworded heading) still fails. The golden payload is built from the fixed stub
+    in this module, so the comparison pins the renderer, not the run: no timestamp, duration or
+    measured value enters it.
+    """
+    html = optimization_view.render_optimization(_model(_view()), settings=settings)
+
+    assert html == _golden(), GOLDEN_HINT
+    # The fixture is not empty and not a stale stub of itself: it carries the panel's anchors.
+    assert 'data-role="recommendation"' in html
+    assert 'data-role="baselines"' in html

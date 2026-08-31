@@ -2,8 +2,8 @@
 
 **Purpose:** the file a new session reads first. One line per outstanding Task #6 item, plus the
 current commit and test counts. Created at the end of Wave 3A (`docs/WAVE3A_REPORT.md`); last
-substantive wave was **Wave View J** (`docs/WAVE_VIEWJ_REPORT.md`, 2026-08-31) — the first
-renderer for a non-twin screen, covering items 14, 15 and 16 on view J.
+substantive wave was **Wave View J closeout** (`docs/WAVE_VIEWJ_CLOSEOUT_REPORT.md`, 2026-08-31) —
+the view-J golden file and the `app.py` badge derivation; view J is closed.
 
 ---
 
@@ -11,10 +11,10 @@ renderer for a non-twin screen, covering items 14, 15 and 16 on view J.
 
 | | |
 |---|---|
-| **Branch** | `main` — the Wave View J commit is the tip; earlier waves 3C/3D were merged via `main` (see `git log`). |
-| **HEAD after Wave View J** | the Wave View J commit, whose parent is `a056bf9`. Not pinned here: a commit cannot contain its own hash. |
-| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D (`6b27858` merge) → `a056bf9` item 15 reconstruction → **Wave View J** |
-| **Full regression** | **553 passed, 0 xfailed** (was 537; Wave View J added 16 renderer tests, changed none). |
+| **Branch** | `main` — the Wave View J closeout commit is the tip; earlier waves 3C/3D were merged via `main` (see `git log`). |
+| **HEAD after Wave View J closeout** | the Wave View J closeout commit, whose parent is the Wave View J commit (`cac1296`). Not pinned here: a commit cannot contain its own hash. |
+| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D (`6b27858` merge) → `a056bf9` item 15 reconstruction → Wave View J (`cac1296`) → **Wave View J closeout** |
+| **Full regression** | **557 passed, 0 xfailed** (was 553; the closeout added 2 golden tests and a 2-case parametrised badge test, changed none). |
 | **xfails** | **None.** |
 | **Regression floor** | 428 (directive §4.7). Any drop halts the phase and is investigated — never "fixed" by editing a test. |
 
@@ -38,6 +38,10 @@ git ls-files -s tests/ | grep -v task6 | md5sum
 `test_task6_performance.py` · `test_task6_twin.py` · `test_task6_real_plant_state.py` *(Wave 3A)* ·
 `test_task6_reproducibility.py` *(Wave 3C)* · `test_task6_optimization_view.py` *(Wave View J)*
 
+Plus the one stored fixture the suite owns: `tests/golden/view_j_normal.html` *(Wave View J
+closeout)* — regenerate it only after a deliberate renderer change, with the command recorded
+beside `GOLDEN_PATH` in `test_task6_optimization_view.py`.
+
 ---
 
 ## Outstanding Task #6 items
@@ -45,9 +49,9 @@ git ls-files -s tests/ | grep -v task6 | md5sum
 | Item | State | One line |
 |---|---|---|
 | **Item 15 requirement text** | **DISPLAY NOW EXISTS** (Wave View J) — reconstruction itself unchanged | Directive D-1. The verbatim text is still unrecovered; the labelled Tier E2 reconstruction stands. Its implied display is **now built**: view J's renderer shows the full PRD §14.5 five-row comparison (item 15's Step 0 display-form decision is recorded in `TASK6_DIRECTIVE.md` §1 item 15 — a table, on view J, not the Time-Series Explorer). Accessor: `OptimizationView.baselines()`. Recovering the verbatim item would still supersede the reconstruction. |
-| **Items 14 / 15 / 16 — view J renderer** | **DONE** (Wave View J) | `src/visualization/optimization_view.py` renders all three: the recommendation card from `Recommendation.describe()` unchanged (14), the §14.5 five-row table with unavailable rows showing their own reason (15), refusals as a display state with the gates' own words (16). `app.py` routes view J via one additive duck-typed `elif`. 16 tests; see `WAVE_VIEWJ_REPORT.md`. Still open on this screen: golden file, multi-horizon grid display (item 10). |
+| **Items 14 / 15 / 16 — view J renderer** | **DONE — view J closed** (Wave View J + closeout) | `src/visualization/optimization_view.py` renders all three: the recommendation card from `Recommendation.describe()` unchanged (14), the §14.5 five-row table with unavailable rows showing their own reason (15), refusals as a display state with the gates' own words (16). `app.py` routes view J via one additive duck-typed `elif`. 16 tests; see `WAVE_VIEWJ_REPORT.md`. The closeout added the golden file (`tests/golden/view_j_normal.html` + 2 tests) and the `synthetic=` fix. Still open on this screen: **multi-horizon grid display (item 10)**. |
 | **B-7 badge (2 sites)** | **CLOSED** (Wave 3B) | Both sites derive the badge from `capabilities().synthetic` via `labels.presentation_card_label()`: `DashboardState._header` reads it inline, and `svg_twin` threads an explicit `synthetic: bool` through `twin_document`/`twin_html`/`render_twin`/`_header_html`. Both strict xfails removed. |
-| **`app.py:123` badge derivation** | Open (new) | Follow-up from Wave 3B. `build_document` calls `render_twin` without `synthetic=`, so production takes the `True` default instead of deriving it. Truthful today (synthetic provider) but not derived. One-line fix — but it widens `build_document`'s documented `view(view_id)`-only contract, so it needs the next wave that owns `app.py`. |
+| **`app.py:123` badge derivation** | **CLOSED** (Wave View J closeout) | `build_document` now passes `synthetic=_source_is_synthetic(state)` to `render_twin` — the same `capabilities().synthetic` derivation `state._header` uses (Wave 3B's pattern). Duck-typed, so a bare `view(view_id)` stub keeps the `True` default and no caller breaks. Mutation-tested regression test in `test_task6_app_smoke.py`; see `WAVE_VIEWJ_CLOSEOUT_REPORT.md` §2. |
 | **BUG 2** | **CLOSED** (Wave 3C) | Views I/J were non-reproducible only in `runtime_s` — view J carried it at two depths (`view.runtime_s` *and* `view.payload.runtime_s`). Fixed by **excluding it from comparison**: a `signature()` method on `WhatIfView`/`OptimizationView` and both screen view models, reusing the frozen layer's own `OptimizationResult.NON_REPRODUCIBLE_FIELDS` convention. `synthetic.py` is byte-identical to `main` — zero production change. An AST guard (mutation-tested) fails if production ever hardcodes the duration. Views I/J are now golden-testable; **no golden file written yet.** |
 | **Twin missing-data symmetry** | Open | Not started. |
 | **`TestNfr2Budget`** | Not written | NFR-2 (< 3 s what-if round trip) is the real budget; `configs/dashboard.yaml` `refresh_seconds: 2.0` is **not** a PRD budget (directive D-10). |
@@ -59,7 +63,7 @@ git ls-files -s tests/ | grep -v task6 | md5sum
 | **Item 19 "Run Demo" sequence** | Missing | Step count (11) is E3/unverified — do not implement a count as a requirement. |
 | **Item 22 enforcement scans** | Partial | Provenance-separation + determinism are E1-attested and now partly covered; the no-hard-coded-number and no-confidence-% scans do not exist. |
 | **Items 2–13 renderers** | Payload only | 8 of 10 views have no renderer; the SVG twin and now view J do. Payloads are built and correct — **preserve, do not rewrite.** |
-| **View J golden file** | Not written | Views I/J are golden-testable since Wave 3C and view J now has a deterministic renderer; writing the golden HTML fixture is the natural next small step (`WAVE_VIEWJ_REPORT.md` §6). |
+| **View J golden file** | **DONE** (Wave View J closeout) | `tests/golden/view_j_normal.html` — the renderer's whole output for the fixed stub payload, compared byte-for-byte (newline-normalised) by 2 tests in `test_task6_optimization_view.py`. Generated with `write_bytes` to keep LF endings; the regeneration command is recorded beside `GOLDEN_PATH`. View I has no renderer yet, so no golden for it. |
 
 ---
 

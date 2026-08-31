@@ -156,6 +156,59 @@ def test_a_failing_view_is_reported_never_substituted(settings: DashboardSetting
 
 
 # =============================================================================
+# The twin's source badge derives from capabilities().synthetic (Wave View J closeout)
+# =============================================================================
+class CapabilitiesStubState(StubState):
+    """A stub state that also answers ``capabilities()`` the way the real ``DashboardState`` does.
+
+    The capabilities object is the real :class:`~src.digital_twin.payloads.ProviderCapabilities`,
+    built with only ``synthetic`` flipped, so what reaches the renderer is what the real provider
+    surface would report - not a stand-in attribute the production path never reads.
+    """
+
+    def __init__(self, models: dict[str, Any], synthetic: bool) -> None:
+        super().__init__(models)
+        from src.digital_twin.payloads import ProviderCapabilities
+
+        self._capabilities = ProviderCapabilities(
+            name="stub", synthetic=synthetic, truth=True, history=True, live=True,
+            predictions=True, anomaly=True, optimization=True, what_if=True,
+        )
+
+    def capabilities(self) -> Any:
+        return self._capabilities
+
+
+@pytest.mark.parametrize("synthetic", [False, True], ids=["real_source", "synthetic_source"])
+def test_the_twin_receives_the_states_own_synthetic_flag(
+    settings: DashboardSettings, monkeypatch: pytest.MonkeyPatch, synthetic: bool
+) -> None:
+    """``build_document`` passes ``capabilities().synthetic`` to the renderer, not a fixed default.
+
+    The follow-up Wave 3B left open: ``render_twin`` was called without ``synthetic=``, so the
+    exported twin's badge took the ``True`` default instead of the source's own account of itself.
+    Proven by interception rather than by the badge text, so the assertion is about the value
+    handed down - both directions, because passing a constant ``synthetic=False`` would also be a
+    derivation of nothing.
+    """
+    captured: dict[str, Any] = {}
+
+    def spy(_snapshot: Any, _equipment: Any, **kwargs: Any) -> str:
+        captured.update(kwargs)
+        return "<div>stub twin</div>"
+
+    monkeypatch.setattr(app.svg_twin, "render_twin", spy)
+    app.build_document(
+        CapabilitiesStubState({"B": StubTwinView()}, synthetic), ["B"], settings=settings
+    )
+
+    assert captured["synthetic"] is synthetic, (
+        "render_twin must be told what capabilities().synthetic reports, so the saved twin's badge "
+        "is the source's own account of itself (B-7 site 2, as fixed for the header in Wave 3B)"
+    )
+
+
+# =============================================================================
 # The CLI
 # =============================================================================
 def test_parser_accepts_the_documented_flags() -> None:

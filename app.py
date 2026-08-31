@@ -83,6 +83,22 @@ def _is_optimization(model: Any) -> bool:
     )
 
 
+def _source_is_synthetic(state: Any) -> bool:
+    """The rendering source's own ``synthetic`` flag (B-7 site 2, the Wave 3B ``state._header`` fix).
+
+    Read from ``state.capabilities().synthetic`` — the same derivation ``DashboardState._header``
+    uses — rather than left to :func:`~src.visualization.svg_twin.render_twin`'s ``True`` default,
+    so a document exported over a provider reporting ``synthetic=False`` cannot claim a synthetic
+    origin. Duck-typed: a stub state exposing only ``view(view_id)`` has no capabilities to ask,
+    and every such stub stands in for the synthetic demonstration, so the answer falls back to
+    ``True`` — the renderer's own documented default — instead of failing the render.
+    """
+    capabilities = getattr(state, "capabilities", None)
+    if callable(capabilities):
+        return bool(capabilities().synthetic)
+    return True
+
+
 def _heading_html(model: Any, view_id: str) -> str:
     header = getattr(model, "header", None)
     title = theme.html(getattr(header, "title", None) or view_id)
@@ -120,7 +136,10 @@ def build_document(
     """Assemble one self-contained HTML document from ``state`` and return it with its timings.
 
     ``state`` is anything exposing ``view(view_id)`` - a real
-    :class:`~src.digital_twin.state.DashboardState`, or a stub in a test. ``settings`` is the
+    :class:`~src.digital_twin.state.DashboardState`, or a stub in a test. When it also exposes
+    ``capabilities()`` (as the real one does), the twin's source badge is derived from
+    ``capabilities().synthetic`` (:func:`_source_is_synthetic`); a bare ``view(view_id)`` stub
+    keeps the synthetic default. ``settings`` is the
     :class:`~src.digital_twin.settings.DashboardSettings` the twin reads its animation ranges from,
     so no animation parameter is written here. The returned mapping is ``view_id -> seconds`` for
     the build-plus-render of that one screen, measured with :func:`time.perf_counter`.
@@ -141,6 +160,7 @@ def build_document(
                     settings=settings,
                     theme_name=theme_name,
                     animate=animate,
+                    synthetic=_source_is_synthetic(state),
                 )
             elif _is_optimization(model):
                 body = optimization_view.render_optimization(
