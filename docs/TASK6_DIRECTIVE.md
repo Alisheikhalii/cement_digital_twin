@@ -21,6 +21,10 @@ this repository**. It survives only as citations inside source comments and docs
 - Where evidence was insufficient, the item is marked **UNRECOVERED** rather than guessed.
   **No requirement in this file was invented.** An admitted gap is correct; a plausible fabrication
   is the worst possible outcome for a traceability document.
+- **One exception, labelled as one:** item 15 is a **RECONSTRUCTED (Tier E2)** entry — an explicit,
+  argued inference from the PRD and the frozen layer, marked at every point as *not recovered and not
+  verbatim*, with its own evidence and its own stated weaknesses. It is not a silent guess, and it is
+  the only entry of its kind. Everything else is either sourced or marked UNRECOVERED.
 
 ### Evidence tiers
 
@@ -30,6 +34,7 @@ this repository**. It survives only as citations inside source comments and docs
 | **E2 — corroborated** | No numbered citation, but the subject is unambiguously implemented/configured in the Task #6 layer and anchored in the PRD. |
 | **E3 — plan-only** | Attested only by `TASK6_RECOVERY_PLAN.md`, which recovered it from transcripts. No on-disk source citation. Treat the *subject* as reliable and any *count* as unverified. |
 | **UNRECOVERED** | No evidence found at any tier. |
+| **RECONSTRUCTED** | Requirement text not recovered, but inferred from a PRD requirement that falls inside the item's E1-located band and is claimed by no other item. Always carries the reasoning, the counter-evidence and an instruction to overwrite it if the verbatim item surfaces. Used **once**, for item 15. Never cite it as the directive's words. |
 
 ### ⚠ Directive-numbering collision (verified — read before using any citation)
 
@@ -63,7 +68,8 @@ directives that happen to share an integer.
 ## 1. The 25 items
 
 Status vocabulary: **IMPLEMENTED** · **PARTIAL** · **MISSING** · **NOT VERIFIED** (may exist, no test
-proves it) · **UNRECOVERED** (requirement text itself not recovered).
+proves it) · **UNRECOVERED** (requirement text itself not recovered) · **RECONSTRUCTED** (requirement
+text inferred and labelled as an inference — item 15 only).
 
 Recurring qualifier — **"payload only"**: the view-model/data layer is built and correct, but no
 renderer turns it into a screen. Only the SVG twin has a renderer today.
@@ -237,39 +243,117 @@ impact." No fabricated confidence value.
 **PRD:** §14.4, §16.3. **AC-7**, **AC-18**.
 **Status:** **IMPLEMENTED (payload only).**
 
-### Item 15 — **UNRECOVERED** (subject area E1-located: Model C / optimization display)
-**Tier:** **UNRECOVERED** for the requirement text · **E1** for its subject area only
+### Item 15 — **RECONSTRUCTED (Tier E2 — evidence-based, NOT verbatim)**
+**Tier:** **E2 — reconstruction by inference** for the requirement text · **E1** for its subject area
+**Reconstructed:** 2026-08-31, documentation-only wave. This section **supersedes** the earlier
+**UNRECOVERED** entry; every piece of evidence that entry established is retained below.
 
-**Located, not recovered.** Three in-namespace sources cite item 15, all inside *plural range*
-citations. They establish **where** item 15 lives; **not one states what it demands.**
-- `src/digital_twin/synthetic.py:1303` — section header `# -- Model C (PRD 14, 16, 17; items 15-17)`
-- `src/digital_twin/synthetic.py:1310` — `get_optimization` docstring: "Model C's run at the current
-  operating point, refusals included (items 15-16)"
-- `src/digital_twin/state.py:827` — view J docstring: "the optimizer's recommendation or its refusal,
-  as decision support (items 14-16)"
-- Corroborating range: `src/digital_twin/state.py:1` — "Task #6 directive items 1-21".
+> ### ⚠ This is an inference. It was not recovered.
+> The requirement stated below is **not** quoted, paraphrased or attested by any transcript, source
+> comment or plan document. **No source on disk says what item 15 demands.** What follows is this
+> document's **best evidence-based reconstruction**, derived from (a) the E1-located band item 15
+> occupies and (b) the one Must-level PRD *display* requirement in that band that no other directive
+> item claims. It is a **hypothesis with a strong evidentiary base, not a recovered requirement.**
+> Nothing in it may be treated as the directive's own words. If the verbatim item is ever recovered,
+> **overwrite this section** — do not reconcile the two.
 
-Item 15 therefore sits in the **Model C / optimization-display** band, between item 14 (the
-recommendation card) and item 16 (refusal visibility). Nothing on disk narrows it further.
+#### Reconstructed requirement
 
-> **Correction to the first version of this file.** This section previously asserted "**No
-> in-namespace citation of item 15**". That was **false**, and the fault was the grep, not the repo:
-> both searches used *singular* forms (`directive item 15`,
-> `(directive|item)[^a-z0-9]{0,8}15\b`), which cannot match `items 15-17` or `items 15-16` — the
-> plural `s` is alphanumeric and blocks the character class. The working form is
+**The AI-optimized recommendation must be displayed against the full PRD §14.5 baseline set — all
+five rows, over one shared metric set, on identical process conditions — per AC-22.** A
+recommendation shown on its own, or against a single "before" number, would not satisfy it.
+
+| # | PRD §14.5 row (verbatim title) | `baselines.py` key | Row is |
+|---|---|---|---|
+| 1 | Current Operating Point | `current_operating_point` | observed |
+| 2 | Historical Baseline | `historical_baseline` | observed aggregate |
+| 3 | Best Comparable Historical Condition | `best_comparable_historical` | observed aggregate |
+| 4 | Digital Twin Baseline (rule engine) | `digital_twin_baseline` | twin simulation |
+| 5 | AI-Optimized Operating Point | `ai_optimized_operating_point` | twin simulation |
+
+#### Why this, and not something else — the inference, stated so it can be attacked
+
+1. **The band is E1-fixed.** Item 15 sits between item 14 (the recommendation card) and item 16
+   (refusal visibility), inside the Model C / optimization-display group. Three in-namespace sources
+   cite item 15, all inside *plural range* citations; they establish **where** item 15 lives and
+   **not one states what it demands.** Re-verified at current HEAD:
+   `src/digital_twin/synthetic.py:1330` — section header `# -- Model C (PRD 14, 16, 17; items 15-17)`;
+   `:1337` — `get_optimization` docstring, "Model C's run at the current operating point, refusals
+   included (items 15-16)"; `src/digital_twin/state.py:871` — view J docstring, "the optimizer's
+   recommendation or its refusal, as decision support (items 14-16)". Corroborating range:
+   `src/digital_twin/state.py:1` — "Task #6 directive items 1-21".
+   *(The earlier entry cited `:1303`, `:1310` and `:827`. Those are correct for the pinned baseline
+   `1f8107f` and have since drifted; the citations themselves are unchanged.)*
+2. **Exactly one Must-level PRD display requirement in that band is unclaimed.** PRD **FR-11**
+   (`PRD:104`, priority **Must**) requires the system to "compute **and display**" the
+   Current / Historical / Best Comparable / Digital Twin Baseline **vs** AI-Optimized comparison.
+   §14.5 (`PRD:631-640`) defines its five rows and requires "the same metric set — energy,
+   production, quality, stability, constraints"; **AC-22** (`PRD:1079`) makes it an acceptance
+   criterion; §28 demo 2 (`PRD:998`) requires the demo to show the recommendation "compared against
+   all five Section 14.5 baselines". Item 14 claims the card; item 16 claims refusals. **Nothing
+   else claims this.**
+3. **The frozen layer built it, in full, as a deliverable.** `src/optimization/baselines.py:1`
+   ("builds exactly those five, always all five"), `:52-71` (the five keys with their verbatim PRD
+   titles), `:238-268` (`BaselineSet.build` emits five rows, unavailable ones included and labelled).
+   Serialized at `src/optimization/optimizer.py:360` under the `"baselines"` key. Tested by the
+   frozen `TestBaselines` (`tests/test_optimization.py:841`; `.baselines.row(...)` at `:873`, `:881`,
+   `:1316`) — part of the 428 baseline.
+4. **The data already reaches view J, and is then dropped.** `OptimizationView.payload` *is*
+   `OptimizationResult.describe()` unchanged (`src/digital_twin/insights.py:321`), so **the complete
+   five-row comparison is present in view J's payload today**, under `payload["baselines"]`. What is
+   absent is any way to reach or show it: `OptimizationView` (`insights.py:209-260`) exposes
+   `recommendation()` but has **no** baselines field or accessor, and the Task #6 layer contains
+   **zero** references to `baselines`/`BASELINE` outside two `synthetic.py` docstrings (`:1172`,
+   `:1175`) describing the history frame it feeds. A Must-level display requirement whose data is
+   already computed, serialized and delivered — but never surfaced — is precisely the shape of a
+   directive item that was issued and left unfinished.
+
+#### Limits of this reconstruction — read before relying on it
+
+- **It is weaker than a normal E2.** §0's tier table defines E2 as a subject "unambiguously
+  implemented/configured **in the Task #6 layer**". This subject is implemented in the **frozen**
+  `src/optimization/` layer and reaches Task #6 only transitively, through `payload`. The PRD
+  anchoring is strong; the Task-#6-implementation half of the E2 test is **not** met.
+- **The "five rows" framing comes from §14.5 and FR-11, not from AC-22's own wording.** AC-22's
+  parenthesis names four *comparators* (Current / Historical / Best Comparable / Digital Twin
+  Baseline); the fifth row, AI-Optimized, is the thing being compared *to* them. Same requirement,
+  different counting — do not quote "AC-22's five baselines".
+- **A competing attribution exists, and it is out of namespace.** `tests/test_optimization.py:842`
+  attributes §14.5 to "**Directive item 12** / PRD 14.5". Per §0's collision table that file is the
+  **optimization** directive's namespace (whose item 12 is the rule-based baseline, `:1220`) — *not*
+  Task #6's item 12, which is specific **and** total energy. The clean reading — *optimization* item
+  12 directed the frozen layer to **compute** the comparison, Task #6 item 15 directed this layer to
+  **display** it — is consistent with all the evidence, but it is a reading, not an attestation.
+- **No exclusivity is claimed.** Items 5, 6, 12 and 20 (traceable numbers, no hard-coded values,
+  never only the favourable metric, honesty labelling) all bear on *how* such a table must be
+  rendered. This reconstruction assigns item 15 the requirement to **show the comparison**, no more.
+- **Knowing the area was never knowing the requirement.** The previous entry's refusal to infer was
+  correct on its own terms and is not overturned here: what changed is that the inference is now
+  written down *as an inference*, with its evidence and its weaknesses stated, because a labelled
+  reconstruction is more useful to the next wave than a blank — and less dangerous than a silent
+  guess. It is still not a recovered requirement.
+- **Out of namespace — still must not be used as item 15:** `tests/test_optimization.py:193`
+  ("directive item 15") belongs to the **optimization** directive (collision table, §0).
+  `AUDIT_REPORT.md` contains **zero** occurrences of "directive". `TASK6_RECOVERY_PLAN.md` names
+  items 1–14 and 16–25 in various places but **never item 15**.
+
+> **Correction to the first version of this file** (retained — it records a verification failure worth
+> not repeating). An earlier version asserted "**No in-namespace citation of item 15**". That was
+> **false**, and the fault was the grep, not the repo: both searches used *singular* forms
+> (`directive item 15`, `(directive|item)[^a-z0-9]{0,8}15\b`), which cannot match `items 15-17` or
+> `items 15-16` — the plural `s` is alphanumeric and blocks the character class. The working form is
 > `grep -rniE "\bitems? +[0-9]" --include=*.py src`. With range citations included, in-namespace
 > citations cover items **1–23**; only items **24** and **25** have none.
 
-**Still do not fill this in by inference.** Knowing the area is not knowing the requirement. Items 14
-and 16 already occupy the recommendation card and the visibility of refusals; what item 15 adds on
-top of them is unknown, and this document does not record guesses as requirements.
-**Action required:** recover from the original session transcript, or ask the user. Until then, treat
-Task #6 as having one unrecovered requirement, and do not report Task #6 complete.
-
-**Out of namespace — must not be used as item 15:** `tests/test_optimization.py:193` ("directive item
-15") belongs to the **optimization** directive (collision table, §0). `AUDIT_REPORT.md` contains
-**zero** occurrences of "directive". `TASK6_RECOVERY_PLAN.md` names items 1–14 and 16–25 in various
-places but **never item 15**.
+**PRD:** §14.5, §14.6, FR-11, §28 demo 2. **AC-22.**
+**Status:** **MISSING — not even payload-reachable.** The five-row comparison is computed by the
+frozen layer and delivered in `OptimizationView.payload["baselines"]`, but no accessor exposes it and
+**no renderer exists for view J at all** (`src/visualization/` renders only the SVG twin). Closing
+this belongs to the **view J renderer wave**, alongside items 14 and 16, which are in the same state.
+**Action still open, no longer blocking:** recovering the verbatim item 15 from the original session
+transcript, or asking the user, would supersede this section and remains worthwhile. It is **no longer
+a blocker** — the reconstruction is actionable, and the work it implies is already queued behind the
+eight missing renderers.
 
 ### Item 16 — Rejected recommendations stay visible, with their reason
 **Tier:** E1
@@ -440,7 +524,7 @@ impossible right now because there is no entrypoint: nothing can be launched, sc
 
 | # | Discrepancy | Resolution |
 |---|---|---|
-| D-1 | **Item 15 requirement text unrecovered** | Its *subject area* is E1-located — Model C / optimization display (`synthetic.py:1303`, `:1310`; `state.py:827`). The requirement itself is still unknown. Recover from transcript or ask the user. Task #6 cannot be declared complete with an unrecovered requirement. |
+| D-1 | **Item 15 requirement text unrecovered — now RECONSTRUCTED (Tier E2), no longer blocking** | The verbatim text is still unrecovered. Its *subject area* is E1-located — Model C / optimization display (`synthetic.py:1330`, `:1337`; `state.py:871` at current HEAD; `:1303`, `:1310`, `:827` at `1f8107f`). §1 item 15 now records a labelled, argued **reconstruction**: the AI-optimized recommendation must be displayed against the full PRD §14.5 five-row baseline set, per **AC-22** / FR-11. Marked *inferred, not recovered* throughout; overwrite it if the verbatim item surfaces. Recovery from transcript, or asking the user, is still worthwhile. **Task #6 completeness is no longer gated on this** — what gates it is that the display does not exist, which is the view J renderer wave's work, not a recovery problem. |
 | D-2 | **View-count: 10 vs 14** | Both are real and only partly overlapping. Directive item 2's A–J (`state.py:71-87`) and PRD §17's ten-row table are different sets; the union is 14 renderable views. PRD-only additions: **Time-Series Explorer, Model Performance, Data Quality, Factory Data Requirements** (AC-3, AC-9). |
 | D-3 | **Scenario count: plan says 10** | Unsupported. Config has **14** regimes; PRD §28 has **5** demos. Read the count from configuration. |
 | D-4 | **"Run Demo" 11 steps** | E3 only. Unverified. |
@@ -455,8 +539,8 @@ impossible right now because there is no entrypoint: nothing can be launched, sc
 
 ## 3. PRD acceptance criteria bearing on Task #6
 
-PRD §33 defines **AC-1 … AC-24**. Thirteen bear on the Task #6 presentation layer; **none is tested
-today.**
+PRD §33 defines **AC-1 … AC-24**. **Fourteen** bear on the Task #6 presentation layer; **none of the
+fourteen is tested at the presentation layer today.**
 
 | AC | Requirement (abbreviated) | Directive item(s) |
 |---|---|---|
@@ -473,8 +557,18 @@ today.**
 | AC-17 | Every synthetic performance claim carries the §21 disclaimer; Presentation Mode never implies real validation | 17, 20 |
 | AC-18 | **No numeric "confidence %" anywhere**; HIGH/MEDIUM/LOW only | 10, 14, 17 |
 | AC-21 | **Every animated element** is driven by live `Twin.current_state_snapshot()`, not prerecorded or hard-coded | 4 |
+| AC-22 | AI recommendations are compared against the **full §14.5 baseline set** on identical process conditions | **15** (reconstructed) |
 
-The remaining eleven (AC-5, AC-8, AC-13–16, AC-19, AC-20, AC-22–24) belong to the **frozen** Task
+**On AC-22's move into this table.** It was previously counted among the frozen layer's ACs, on the
+grounds that the 428-test baseline covers it. That is true of only half of it. AC-22 cites §14.5, and
+**FR-11** (`PRD:104`, Must) states the obligation as "compute **and display**":
+
+- the **compute** half is frozen and tested — `src/optimization/baselines.py`, serialized at
+  `optimizer.py:360`, covered by `TestBaselines` (`tests/test_optimization.py:841`);
+- the **display** half is a Task #6 obligation and **does not exist** — no accessor on
+  `OptimizationView`, no renderer for view J. It is mapped here to item 15 (see §1).
+
+The remaining **ten** (AC-5, AC-8, AC-13–16, AC-19, AC-20, AC-23, AC-24) belong to the **frozen** Task
 #1–#5 layers and are already covered by the 428-test baseline.
 
 ---
@@ -519,5 +613,7 @@ pass, which correctly declined to edit outside its own remit; the lead agent add
 
 *Sources: in-namespace citations under `src/digital_twin/`, `src/visualization/`, `src/labels.py` and
 `src/optimization/recommendation.py`; `docs/PRD_Synthetic_Cement_Digital_Twin.md`;
-`TASK6_RECOVERY_PLAN.md`; `configs/*.yaml`. Line numbers verified against commit `1f8107f`.
-No requirement in this document was invented; gaps are marked UNRECOVERED.*
+`TASK6_RECOVERY_PLAN.md`; `configs/*.yaml`. Line numbers verified against commit `1f8107f`, except
+where §1 item 15 gives a re-verified current-HEAD line.
+No requirement in this document was invented. Gaps are marked UNRECOVERED; the single inferred entry
+is marked RECONSTRUCTED and argues its own case (§1 item 15, added 2026-08-31).*
