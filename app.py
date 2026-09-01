@@ -50,7 +50,7 @@ from typing import Any
 from src import labels
 from src.config import SCENARIOS, Config, load_config
 from src.digital_twin.state import VIEWS
-from src.visualization import optimization_view, svg_twin, theme
+from src.visualization import intelligence_view, optimization_view, svg_twin, theme
 
 DEFAULT_OUT = Path("reports") / "task6_dashboard.html"
 DEFAULT_VIEWS = ("B",)
@@ -81,6 +81,16 @@ def _is_optimization(model: Any) -> bool:
         and hasattr(view, "baselines")
         and hasattr(view, "blocking_gates")
     )
+
+
+def _is_intelligence(model: Any) -> bool:
+    """True for the AI Prediction & Anomaly screen (H), whose view model carries both payloads.
+
+    Duck-typed on the two fields :class:`~src.digital_twin.state.IntelligenceView` adds over
+    the other screens (``predictions`` and ``anomaly``), so the routing stays shape-based like
+    :func:`_is_twin` and :func:`_is_optimization` — and no other screen's model carries both.
+    """
+    return hasattr(model, "predictions") and hasattr(model, "anomaly")
 
 
 def _source_is_synthetic(state: Any) -> bool:
@@ -161,6 +171,10 @@ def build_document(
                     theme_name=theme_name,
                     animate=animate,
                     synthetic=_source_is_synthetic(state),
+                )
+            elif _is_intelligence(model):
+                body = intelligence_view.render_intelligence(
+                    model, settings=settings, theme_name=theme_name
                 )
             elif _is_optimization(model):
                 body = optimization_view.render_optimization(
