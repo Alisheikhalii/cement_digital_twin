@@ -29,9 +29,22 @@ byte-identical.
 git ls-files -s src/models src/process_models src/optimization src/simulation \
   src/features src/data_generation configs pyproject.toml | md5sum
 # expected: c7a1f54dd578900835596c02cb9a19a0
-git ls-files -s tests/ | grep -v task6 | md5sum
+git ls-files -s tests/ | grep -v -E "test_task6_|tests/golden/" | md5sum
 # expected: 53f2aefec33494be5ca22c08ab22b5fd
 ```
+
+**Why this rule (fixed 2026-09-01).** The digest protects the 19 pre-Task-6 entries under `tests/`
+(17 original modules + `conftest.py` + `__init__.py`, all from baseline `1f8107f`) by excluding every
+known Task-6-owned path by name: the `test_task6_*.py` modules and the entire `tests/golden/`
+fixture directory. The previous convention (`grep -v task6`) was a substring match on the whole
+line, so it failed to exclude `tests/golden/view_j_normal.html` when that fixture landed in Wave
+View J closeout — running the documented command produced `dfd6d1e9a1a491f17b81af1c0992a35f`
+instead of the recorded value, and every future golden fixture (view H, view I, …) would have
+shifted it again. The exclusion form is fail-safe in the right direction: anything *not* explicitly
+Task-6-owned is counted, so a new or renamed frozen test file changes the digest loudly, while new
+Task-6 test modules (by the `test_task6_` naming convention) and new golden fixtures (anywhere in
+`tests/golden/`) are excluded automatically. An enumerate-the-17 rule was rejected: it silently
+stops protecting any frozen test added later, and renames would masquerade as digest drift.
 
 ### Task #6 test modules (not frozen — these are the ones waves may extend)
 
