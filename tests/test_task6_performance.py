@@ -56,6 +56,13 @@ Findings this file exists to record
    is not search cost, exactly as ``configs/optimization.yaml`` (the "MEASURED NFR-2 position"
    block) already records.
 
+   *Superseded in part by Wave View A (2026-09-02): view A's PRD 18.1 AI / anomaly status cards
+   now read ``get_anomaly_state`` (~0.1 s) and ``get_optimization`` (~2.9 s warm), so the landing
+   screen costs ~3 s with the model layer present - 8 of 10 screens are inside 2.0 s warm, and
+   view A is instant under ``--skip-models`` with both tiles stating the models' own unavailable
+   reason. The 9-of-10 statement above is kept as the pre-View-A measurement it was. See
+   ``docs/VIEWA_IMPLEMENTATION_REPORT.md`` for the decision and its rejected alternative.*
+
 4. **View J's cost is Model C's search, not a provider data fetch, and it is already documented.**
    99.8 % of view J is one ``Optimizer.optimize`` call; the provider's own data assembly around it
    is 7 ms (``_optimizer_inputs`` 0.2 ms, ``_flat_row`` 0.2 ms, ``_model_history`` 6.2 ms for 240
@@ -142,8 +149,17 @@ MODEL_SURFACE_SECONDS: dict[str, str] = {
 #: Which of those five each screen reads - the lazy-path contract, stated per screen. Measured with
 #: the Tier-1 stub's own call counter, which is why it needs no clock: a screen that never calls
 #: ``get_optimization`` cannot pay Model C's 2.9 s, on any machine.
+#:
+#: **Wave View A (2026-09-02) changed view A's row deliberately.** PRD 18.1 requires the Plant
+#: Overview to carry "AI status" and "anomaly status" cards, and the honest source for those is the
+#: same payload objects views H and J render - so view A now reads ``get_anomaly_state`` and
+#: ``get_optimization`` (the landing screen costs ~3 s with the model layer present, and stays
+#: instant under ``--skip-models``, where both tiles state the models' own unavailable reason). The
+#: six remaining readout screens are unchanged. See ``docs/VIEWA_IMPLEMENTATION_REPORT.md`` for the
+#: cost discussion and the alternative that was rejected (rendering capability pointers instead of
+#: live statuses - dishonest to the PRD card's purpose).
 MODEL_SURFACES_BY_VIEW: dict[str, frozenset[str]] = {
-    "A": frozenset(),
+    "A": frozenset({"get_anomaly_state", "get_optimization"}),
     "B": frozenset(),
     "C": frozenset(),
     "D": frozenset(),
@@ -210,7 +226,8 @@ def test_a_lazy_view_reads_only_the_model_surfaces_its_own_screen_needs(
 
     The clock-free form of the whole laziness argument. Model C's search is 2.84-3.07 s and its
     what-if round trip 1.73 s; a screen that never calls ``get_optimization`` / ``run_what_if``
-    cannot pay them, whatever the machine. Seven of the ten screens call neither.
+    cannot pay them, whatever the machine. Six of the ten screens call neither; view A reads the
+    two AI payloads its PRD 18.1 status cards need (see MODEL_SURFACES_BY_VIEW's Wave View A note).
     """
     provider, state = stub_state()
     state.view(view_id)
@@ -231,20 +248,44 @@ def test_the_eager_accessor_reads_every_model_surface_that_laziness_skips(
         assert provider.calls[name], f"views() did not read {name}, so the cost model has moved"
 
 
-def test_each_surface_is_read_once_per_frame_so_the_defect_was_eagerness_not_redundancy(
+def test_each_surface_is_read_once_per_screen_that_needs_it_not_repeatedly(
     stub_state: Callable[..., tuple[Any, DashboardState]]
 ) -> None:
     """Plan Section 10 / audit P0-2: there is no redundant re-fetch to cache away.
 
-    One ``views()`` call reads each frame surface once and each model surface once - ten screens
-    off one read, not ten reads. The 6 s is therefore the *number of models consulted*, not the
-    same model consulted repeatedly, which is why the plan's answer is laziness and not caching.
+    One ``views()`` call reads each frame surface once. A model surface is read once by each
+    screen that needs it - no screen may fetch the same payload twice, which is the redundancy
+    the plan's no-caching ruling was about, and which would still be invisible to a per-screen
+    timing. The expected count is *derived* from :data:`MODEL_SURFACES_BY_VIEW`, so the table is
+    the single statement of what each screen reads and a screen that re-fetched anything fails
+    here as loudly as before.
+
+    **Wave View A (2026-09-02) restated this contract** (it previously asserted every surface was
+    read exactly once across all ten screens). View A's PRD 18.1 status cards read the same
+    payloads views H and J render, so ``get_anomaly_state`` and ``get_optimization`` are now read
+    twice in one eager pass - two screens' needs, not one screen's redundancy. The eager
+    ``views()`` path therefore pays Model C's search twice (~3 s extra); production never calls
+    it (:func:`test_no_production_module_calls_the_eager_accessor`), and the lazy path pays each
+    surface once per screen actually rendered. Sharing one model read across the screens that
+    need it would remove the double read but is a state-layer redesign the no-caching ruling and
+    the wave's scope both forbid - it is recorded as the open option in
+    ``docs/VIEWA_IMPLEMENTATION_REPORT.md``.
     """
     provider, state = stub_state()
     state.views()
-    counts = {name: provider.calls[name] for name in FRAME_SURFACES + tuple(MODEL_SURFACE_SECONDS)}
-    repeated = {name: count for name, count in counts.items() if count != 1}
-    assert not repeated, f"a surface was read more than once for one frame: {repeated}"
+    expected: dict[str, int] = {name: 1 for name in FRAME_SURFACES}
+    for surfaces in MODEL_SURFACES_BY_VIEW.values():
+        for name in surfaces:
+            expected[name] = expected.get(name, 0) + 1
+    mismatched = {
+        name: (provider.calls[name], expected[name])
+        for name in expected
+        if provider.calls[name] != expected[name]
+    }
+    assert not mismatched, (
+        f"a surface was read a different number of times than the screens needing it: "
+        f"{mismatched} (expected counts: {expected})"
+    )
 
 
 def test_no_production_module_calls_the_eager_accessor() -> None:
@@ -528,14 +569,18 @@ def test_the_lazy_accessor_is_what_makes_a_screen_affordable(measured: dict[str,
     )
 
 
-def test_the_seven_readout_screens_are_a_rounding_error_in_the_eager_cost(
+def test_the_readout_screens_are_a_rounding_error_in_the_eager_cost(
     measured: dict[str, Any]
 ) -> None:
-    """All of A-G together are 0.3 % of the eager cost: the three model screens are the whole bill.
+    """The readout screens together are 0.3 % of the eager cost: the model screens are the bill.
 
     Stated as a share rather than as seconds so it survives any machine. It is the reason the fix
     for a slow dashboard is "do not build H/I/J unless they are on screen" and not a faster panel:
-    the seven panel screens read only the shared frame, and the frame is 1.5 ms.
+    the readout screens read only the shared frame, and the frame is 1.5 ms. Six screens qualify
+    since Wave View A: the Plant Overview joined the model readers when its PRD 18.1 AI / anomaly
+    status cards started reading the view H / J payloads (see MODEL_SURFACES_BY_VIEW's note), so
+    it is deliberately no longer part of this rounding-error set - recorded in
+    ``docs/VIEWA_IMPLEMENTATION_REPORT.md``.
     """
     per_view = measured["per_view"]
     readout = sum(per_view[view_id] for view_id in READOUT_VIEW_IDS)

@@ -173,6 +173,93 @@ class Footer:
 # =============================================================================
 # View A - Plant Overview
 # =============================================================================
+#: What the overview's anomaly tile says for a row Model B scored normal. This is the frozen
+#: layer's own NORMAL-branch wording (``AnomalyReport.render()``), carried here so the compact
+#: tile and view H's card name the same state the same way - not a second judgement.
+NO_ANOMALY_TEXT: Final = "No anomaly detected."
+
+
+@dataclass(frozen=True, slots=True)
+class OverviewStatus:
+    """One of view A's two compact status tiles, read from a payload that already exists.
+
+    PRD 18.1 names two tiles the overview never carried: "AI status" and "Anomaly status". Both
+    are one-line readings of payloads other screens already own - Model B's
+    :class:`~src.digital_twin.insights.AnomalyState` (view H) and Model C's
+    :class:`~src.digital_twin.insights.OptimizationView` (view J) - so this view model carries a
+    summary of each, never a second computation of either. Every word is the payload's own:
+    ``status`` is its headline state and ``detail`` its own one-line account; a model that is not
+    there is stated as unavailable with its own reason, never paraphrased into a reassuring
+    status (item 20, NFR-6).
+    """
+
+    title: str
+    available: bool
+    status: str
+    detail: str
+    provenance: Provenance
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "title": self.title,
+            "available": self.available,
+            "status": self.status,
+            "detail": self.detail,
+            "provenance": str(self.provenance),
+        }
+
+
+def _anomaly_status_tile(anomaly: AnomalyState) -> OverviewStatus:
+    """The anomaly tile from Model B's payload - its own words, one line (PRD 18.1).
+
+    ``status`` is Model B's own level word and ``detail`` its own cause line; a normal row uses
+    the frozen layer's own wording (:data:`NO_ANOMALY_TEXT`), never a blank tile. The cause is
+    ``display_cause``, which already reads "Evidence inconclusive" wherever Model B cannot
+    separate an instrument fault from a process deviation (item 11) - that state is carried
+    through verbatim, not resolved into a named cause.
+    """
+    if not anomaly.available:
+        return OverviewStatus(
+            title="Anomaly status",
+            available=False,
+            status=labels.MODEL_UNAVAILABLE_LABEL,
+            detail=anomaly.unavailable_reason,
+            provenance=anomaly.provenance,
+        )
+    return OverviewStatus(
+        title="Anomaly status",
+        available=True,
+        status=anomaly.status,
+        detail=anomaly.display_cause if anomaly.is_anomaly else NO_ANOMALY_TEXT,
+        provenance=anomaly.provenance,
+    )
+
+
+def _ai_status_tile(view: OptimizationView) -> OverviewStatus:
+    """The AI tile from Model C's payload - its own headline, never a second judgement.
+
+    ``detail`` is the optimizer's own one-line ``message`` in every state, so a refusal carries
+    the blocking gates' own reasons (item 16) and an accepted run carries its own account of what
+    it proposes. The ``status`` word is drawn from the mandated vocabulary: the categorical
+    refusal headline, the "AI Recommendation" label, or the unavailable-model label.
+    """
+    if not view.available:
+        return OverviewStatus(
+            title="AI status",
+            available=False,
+            status=labels.MODEL_UNAVAILABLE_LABEL,
+            detail=view.unavailable_reason,
+            provenance=view.provenance,
+        )
+    return OverviewStatus(
+        title="AI status",
+        available=True,
+        status=labels.NO_SAFE_RECOMMENDATION if view.refused else labels.AI_RECOMMENDATION_LABEL,
+        detail=view.message,
+        provenance=view.provenance,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class OverviewStageView:
     """One stage of the item 3 chain, and whether its arrow moves.
@@ -205,13 +292,22 @@ class OverviewStageView:
 
 @dataclass(frozen=True, slots=True)
 class OverviewView:
-    """View A: the five-stage chain, the plant KPIs and the whole-plant observed snapshot."""
+    """View A: the five-stage chain, the plant KPIs and the whole-plant observed snapshot.
+
+    PRD 18.1's seven tiles all live here: kiln and mill status read from the ``stages`` chain
+    (item 3), production and both energy figures from the ``plant`` KPI group (whose specific
+    and total energy values the provider binds together, item 12), and the AI and anomaly status
+    tiles as one-line :class:`OverviewStatus` summaries of the view H / view J payloads - reused,
+    not recomputed here.
+    """
 
     header: ViewHeader
     stages: tuple[OverviewStageView, ...]
     plant: KpiGroup
     snapshot: StateSnapshot
     equipment: tuple[EquipmentStatus, ...]
+    ai_status: OverviewStatus
+    anomaly_status: OverviewStatus
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -220,6 +316,8 @@ class OverviewView:
             "plant": self.plant.describe(),
             "snapshot": self.snapshot.describe(),
             "equipment": [item.describe() for item in self.equipment],
+            "ai_status": self.ai_status.describe(),
+            "anomaly_status": self.anomaly_status.describe(),
         }
 
 
@@ -632,7 +730,17 @@ class DashboardState:
 
     # -- view A ------------------------------------------------------------------------------
     def overview(self, frame: _Frame | None = None) -> OverviewView:
-        """View A: the Quarry/feed → kiln → clinker → mill → product chain (item 3)."""
+        """View A: the Quarry/feed → kiln → clinker → mill → product chain (item 3).
+
+        PRD 18.1's two AI tiles are filled by *reuse*, not by new computation: the anomaly tile
+        reads the same ``AnomalyState`` accessor view H renders (``_anomaly`` - not the full
+        ``intelligence()`` assembly, so no Model A run is spent on a tile that shows none of it),
+        and the AI tile reads the same ``optimization()`` builder view J renders, on this same
+        frame. That reuse is the honest reading of "AI status": a summary of what Model B and
+        Model C actually said on this instant, stated as unavailable when they were not run -
+        and it means this screen now pays the optimizer's cost when the model layer is present
+        (under ``--skip-models`` both tiles are the fast unavailable branch).
+        """
         frame = frame or self.frame()
         by_name = frame.equipment_by_name()
         stages: list[OverviewStageView] = []
@@ -652,12 +760,21 @@ class DashboardState:
                     equipment=equipment,
                 )
             )
+        caps = self._provider.capabilities()
+        stamp = frame.snapshot.timestamp
+        anomaly = (
+            self._anomaly("kiln", stamp)
+            if caps.anomaly
+            else AnomalyState.unavailable("kiln", stamp)
+        )
         return OverviewView(
             header=self._header("A", frame),
             stages=tuple(stages),
             plant=frame.kpi(layout.PLANT_KPI_TITLE),
             snapshot=frame.snapshot,
             equipment=frame.equipment,
+            ai_status=_ai_status_tile(self.optimization(frame).view),
+            anomaly_status=_anomaly_status_tile(anomaly),
         )
 
     # -- views B / E -------------------------------------------------------------------------

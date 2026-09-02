@@ -11,10 +11,10 @@ first renderer for the AI Prediction & Anomaly screen, covering directive items 
 
 | | |
 |---|---|
-| **Branch** | `main` — the Wave View J horizon commit is the tip; earlier waves 3C/3D were merged via `main` (see `git log`). |
-| **HEAD after Wave View J horizon** | the Wave View J horizon commit, whose parent is the Wave View J closeout commit (`89a93ff`). Not pinned here: a commit cannot contain its own hash. |
-| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D (`6b27858` merge) → `a056bf9` item 15 reconstruction → Wave View J (`cac1296`) → Wave View J closeout (`89a93ff`) → Wave View J horizon (`963f6d2`) → View H audit (`52ac068`) → **Wave View H** |
-| **Full regression** | **589 passed, 0 xfailed** (was 567; the View H wave added 22 tests to `test_task6_intelligence_view.py`, changed none). |
+| **Branch** | `main` — the Wave View A commit is the tip; earlier waves 3C/3D were merged via `main` (see `git log`). |
+| **HEAD after Wave View A** | the Wave View A commit, whose parent is the View H closeout commit (`cc86f54`). Not pinned here: a commit cannot contain its own hash. |
+| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D (`6b27858` merge) → `a056bf9` item 15 reconstruction → Wave View J (`cac1296`) → Wave View J closeout (`89a93ff`) → Wave View J horizon (`963f6d2`) → View H audit (`52ac068`) → Wave View H (`4a70160`) → View H closeout (`cc86f54`) → **Wave View A** |
+| **Full regression** | **612 passed, 0 xfailed** (was 589; the View A wave added 23 tests in the new `test_task6_overview_view.py`, changed none). |
 | **xfails** | **None.** |
 | **Regression floor** | 428 (directive §4.7). Any drop halts the phase and is investigated — never "fixed" by editing a test. |
 
@@ -50,10 +50,11 @@ stops protecting any frozen test added later, and renames would masquerade as di
 `test_task6_provider_contract.py` · `test_task6_app_smoke.py` · `test_task6_frame_nan.py` ·
 `test_task6_performance.py` · `test_task6_twin.py` · `test_task6_real_plant_state.py` *(Wave 3A)* ·
 `test_task6_reproducibility.py` *(Wave 3C)* · `test_task6_optimization_view.py` *(Wave View J)* ·
-`test_task6_intelligence_view.py` *(Wave View H)*
+`test_task6_intelligence_view.py` *(Wave View H)* · `test_task6_overview_view.py` *(Wave View A)*
 
 Plus the stored fixtures the suite owns: `tests/golden/view_j_normal.html` *(Wave View J
-closeout)* and `tests/golden/view_h_normal.html` *(Wave View H)* — regenerate either only after a
+closeout)*, `tests/golden/view_h_normal.html` *(Wave View H)* and
+`tests/golden/view_a_normal.html` *(Wave View A)* — regenerate any of them only after a
 deliberate renderer change, with the command recorded beside `GOLDEN_PATH` in the owning test
 module.
 
@@ -78,7 +79,8 @@ module.
 | **Item 19 "Run Demo" sequence** | Missing | Step count (11) is E3/unverified — do not implement a count as a requirement. |
 | **Item 22 enforcement scans** | Partial | Provenance-separation + determinism are E1-attested and now partly covered; the no-hard-coded-number and no-confidence-% scans do not exist. (The item-10 grid now *renders* the spread-not-% rule, pinned by tests — but that is not the directive's automated scan.) |
 | **Items 10 / 11 — view H renderer** | **DONE** (Wave View H) | `src/visualization/intelligence_view.py` renders both payloads of `DashboardState.intelligence()`: Model A's own forecast grid from `PredictionSet` (item 10 — the current row's horizons, **not** view J's recommendation-scoped `predicted_state_by_horizon`) with every configured horizon a column, OBSERVED `Current` and PREDICTION horizons badged as two channels, `±` ensemble spread never a confidence %, and missing (target, horizon) pairs as stated absences with the payload's own account; and Model B's verdict from `AnomalyState` in the PRD §15 contract lines (item 11) — WARNING card, "Evidence inconclusive" verbatim where the evidence cannot separate fault from process (the `from_report` branch, previously untested, now pinned), nearest regime shown only as a similarity match, NORMAL rows as "No anomaly detected." `app.py` routes view H via one additive duck-typed `elif`. 22 tests + `tests/golden/view_h_normal.html`; see `VIEWH_IMPLEMENTATION_REPORT.md`. Remaining view-H gaps (trends/prediction-fan chart, inject control, evidence fields) are listed in that report §10. |
-| **Items 2–13 renderers** | Payload only | 6 of 10 views have no renderer; the SVG twin (B/E), view J and view H do. Payloads are built and correct — **preserve, do not rewrite.** |
+| **Items 3 / 9 / 12 + PRD 18.1 — view A renderer** | **DONE** (Wave View A) | `src/visualization/overview_view.py` renders `DashboardState.overview()`: the item-3 five-stage chain (state word, rate, PRD 8.3 equipment — a grouping of the twin, nothing animates), the items-9/12 plant KPI group whole (specific energy + daily totals, the group's own note), and PRD 18.1's two AI tiles — compact `OverviewStatus` summaries **reused** from the view J / view H payloads (`optimization(frame).view` and `_anomaly("kiln", stamp)`, no second computation), with unavailable models stated with their own reason and refusals as display states. `app.py` routes view A via one additive duck-typed `elif` (`_is_overview`: `stages` + `plant`). 23 tests + `tests/golden/view_a_normal.html`; see `VIEWA_IMPLEMENTATION_REPORT.md`. Known gap: PRD 18.1 trend sparklines (no trend channels in the payload — same class of skip as view H's). The perf contract in `test_task6_performance.py` was restated with dated notes (view A reads `get_anomaly_state` + `get_optimization`); the open option — sharing one model read across screens — needs a directive-level decision. |
+| **Items 2–13 renderers** | Payload only | 5 of 10 views have no renderer; the SVG twin (B/E), view J, view H and view A do. Payloads are built and correct — **preserve, do not rewrite.** |
 | **View J golden file** | **DONE — regenerated** (Wave View J closeout; regenerated in the horizon wave) | `tests/golden/view_j_normal.html` — the renderer's whole output for the fixed stub payload, compared byte-for-byte (newline-normalised) by 2 tests in `test_task6_optimization_view.py`. The horizon wave changed the renderer by design and regenerated the fixture with the recorded command (never hand-edited). View I has no renderer yet, so no golden for it. |
 
 ---

@@ -23,10 +23,12 @@ How to launch it
 
 Cost of each flag, measured on this machine (see ``TASK6_RECOVERY_PLAN.md`` sections 5 B-6 and 10):
 the model layer dominates a full build (~30 s here; the plan records 13.3-16.6 s), the replay run
-is the other expensive step, and one view costs 1.5 ms (A-G) to a few seconds (H/I/J). So this
-host uses the fast path documented at ``session.py`` in ``DashboardSession.build`` - ``replay`` off
-by default, and the lazy ``DashboardState.view()`` accessor rather than ``views()``, which would
-eagerly build all ten screens. Every timing it prints is measured, never estimated.
+is the other expensive step, and one view costs 1.5 ms (C-G) to a few seconds (H/I/J, and A's
+AI/anomaly status tiles, which read the same payloads H and J render - ~3 s with the model layer
+present, instant under ``--skip-models`` where both tiles honestly report the models as absent).
+So this host uses the fast path documented at ``session.py`` in ``DashboardSession.build`` -
+``replay`` off by default, and the lazy ``DashboardState.view()`` accessor rather than ``views()``,
+which would eagerly build all ten screens. Every timing it prints is measured, never estimated.
 
 Honesty
 -------
@@ -50,7 +52,7 @@ from typing import Any
 from src import labels
 from src.config import SCENARIOS, Config, load_config
 from src.digital_twin.state import VIEWS
-from src.visualization import intelligence_view, optimization_view, svg_twin, theme
+from src.visualization import intelligence_view, optimization_view, overview_view, svg_twin, theme
 
 DEFAULT_OUT = Path("reports") / "task6_dashboard.html"
 DEFAULT_VIEWS = ("B",)
@@ -91,6 +93,17 @@ def _is_intelligence(model: Any) -> bool:
     :func:`_is_twin` and :func:`_is_optimization` — and no other screen's model carries both.
     """
     return hasattr(model, "predictions") and hasattr(model, "anomaly")
+
+
+def _is_overview(model: Any) -> bool:
+    """True for the Plant Overview screen (A), whose view model carries the stage chain.
+
+    Duck-typed on the two fields :class:`~src.digital_twin.state.OverviewView` adds over the
+    other screens (``stages`` and ``plant``), so the routing stays shape-based like
+    :func:`_is_twin`, :func:`_is_intelligence` and :func:`_is_optimization` — no other screen's
+    model carries both (the energy view has a ``plant`` group but no stage chain).
+    """
+    return hasattr(model, "stages") and hasattr(model, "plant")
 
 
 def _source_is_synthetic(state: Any) -> bool:
@@ -178,6 +191,10 @@ def build_document(
                 )
             elif _is_optimization(model):
                 body = optimization_view.render_optimization(
+                    model, settings=settings, theme_name=theme_name
+                )
+            elif _is_overview(model):
+                body = overview_view.render_overview(
                     model, settings=settings, theme_name=theme_name
                 )
             else:
@@ -274,7 +291,9 @@ def build_parser(scenario_names: Sequence[str] = ()) -> argparse.ArgumentParser:
         epilog=(
             f"views (--view takes the id or the key, repeatable):\n{view_lines}\n\n"
             "H, I and J need the model layer, so they are unavailable under --skip-models and "
-            "will say so rather than show a substitute number.\n\n"
+            "will say so rather than show a substitute number. View A renders either way, but "
+            "its AI status and anomaly status tiles read the model layer too, so under "
+            "--skip-models they state the models' own unavailable reason.\n\n"
             "examples:\n"
             "  python app.py\n"
             "  python app.py --skip-models --no-browser\n"
