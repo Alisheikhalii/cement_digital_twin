@@ -159,6 +159,16 @@ view A renders instantly with both tiles honestly unavailable.
   **612 passed, 0 failed** in 268 s. Baseline at session start was 589; the 23 new View A
   tests account exactly for the difference. The known intermittent failure did not appear
   this run — nothing flaky to note.
+
+## 9. Git
+
+* **Commit:** `8f61802` — `feat(task6): Wave View A - first renderer for the Plant
+  Overview screen` (8 files changed, 1234 insertions, 27 deletions).
+* **Pushed:** yes — `cc86f54..8f61802 main -> main`; verified with
+  `git fetch && git status && git log --oneline -3`: branch up to date with
+  `origin/main`, working tree clean, `8f61802` at the tip.
+
+**STOP after View A, as directed.**
 * **Frozen digests (verified this wave, before commit):**
   `git ls-files -s src/models src/process_models src/optimization src/simulation
   src/features src/data_generation configs pyproject.toml | md5sum` →
