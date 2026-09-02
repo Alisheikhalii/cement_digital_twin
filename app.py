@@ -52,7 +52,14 @@ from typing import Any
 from src import labels
 from src.config import SCENARIOS, Config, load_config
 from src.digital_twin.state import VIEWS
-from src.visualization import intelligence_view, optimization_view, overview_view, svg_twin, theme
+from src.visualization import (
+    energy_view,
+    intelligence_view,
+    optimization_view,
+    overview_view,
+    svg_twin,
+    theme,
+)
 
 DEFAULT_OUT = Path("reports") / "task6_dashboard.html"
 DEFAULT_VIEWS = ("B",)
@@ -104,6 +111,18 @@ def _is_overview(model: Any) -> bool:
     model carries both (the energy view has a ``plant`` group but no stage chain).
     """
     return hasattr(model, "stages") and hasattr(model, "plant")
+
+
+def _is_energy(model: Any) -> bool:
+    """True for the Energy Monitoring screen (G), whose view model carries the item-12 partition.
+
+    Duck-typed on the two fields :class:`~src.digital_twin.state.EnergyView` adds over the other
+    screens (the ``specific`` and ``total`` panels of the item-12 partition — the view's whole
+    reason to exist), so the routing stays shape-based like :func:`_is_twin` and
+    :func:`_is_overview`. No other screen's model carries a ``specific``/``total`` pair: the
+    overview exposes the same plant group whole, not partitioned.
+    """
+    return hasattr(model, "specific") and hasattr(model, "total")
 
 
 def _source_is_synthetic(state: Any) -> bool:
@@ -195,6 +214,10 @@ def build_document(
                 )
             elif _is_overview(model):
                 body = overview_view.render_overview(
+                    model, settings=settings, theme_name=theme_name
+                )
+            elif _is_energy(model):
+                body = energy_view.render_energy(
                     model, settings=settings, theme_name=theme_name
                 )
             else:
