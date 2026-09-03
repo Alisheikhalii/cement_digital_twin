@@ -19,6 +19,7 @@ How to launch it
     python app.py --view B --view E --out twin.html  # both twin screens
     python app.py --skip-models --no-browser        # ~0.4 s: twin only, no model layer
     python app.py --view J --scenario "Low oxygen condition" --seed 20240101
+    python app.py --view I --change kiln_fuel_rate_tph=-5 --mode EXPERIMENTAL
     python app.py --help                            # every flag, every valid view and scenario
 
 Cost of each flag, measured on this machine (see ``TASK6_RECOVERY_PLAN.md`` sections 5 B-6 and 10):
@@ -52,6 +53,7 @@ from typing import Any
 from src import labels
 from src.config import SCENARIOS, Config, load_config
 from src.digital_twin.state import VIEWS
+from src.schema import manipulated_variables
 from src.visualization import (
     energy_view,
     intelligence_view,
@@ -59,6 +61,7 @@ from src.visualization import (
     overview_view,
     svg_twin,
     theme,
+    what_if_view,
 )
 
 DEFAULT_OUT = Path("reports") / "task6_dashboard.html"
@@ -123,6 +126,18 @@ def _is_energy(model: Any) -> bool:
     overview exposes the same plant group whole, not partitioned.
     """
     return hasattr(model, "specific") and hasattr(model, "total")
+
+
+def _is_whatif(model: Any) -> bool:
+    """True for the What-If Simulation screen (I), whose view model carries the sliders.
+
+    Duck-typed on the two fields :class:`~src.digital_twin.state.WhatIfViewModel` adds over
+    the other screens — the item-13 ``sliders`` tuple plus the engine answer under ``view`` —
+    so the routing stays shape-based like :func:`_is_twin` and :func:`_is_energy`. No other
+    screen's model carries a ``sliders`` field: the slider specs exist only for the PRD 16.1
+    manipulated variables, and only view I asks for them.
+    """
+    return hasattr(model, "sliders") and hasattr(model, "view")
 
 
 def _source_is_synthetic(state: Any) -> bool:
@@ -220,6 +235,10 @@ def build_document(
                 body = energy_view.render_energy(
                     model, settings=settings, theme_name=theme_name
                 )
+            elif _is_whatif(model):
+                body = what_if_view.render_what_if(
+                    model, settings=settings, theme_name=theme_name
+                )
             else:
                 body = _payload_html(model)
         except Exception as exc:  # noqa: BLE001 - reported honestly, never substituted
@@ -283,6 +302,71 @@ def _document(
 # =============================================================================
 # CLI
 # =============================================================================
+#: The ids and the registry key that name view I, derived from :data:`VIEWS` so this host never
+#: spells the screen differently than the registry that owns it.
+_WHAT_IF_IDS: frozenset[str] = frozenset(
+    {row[0] for row in VIEWS if row[1] == "what_if"} | {"what_if"}
+)
+
+
+class _WhatIfRequest:
+    """Serve view I from the caller's mode and change set; every other view delegates.
+
+    The smallest reachability surface for PRD 16.1's mode toggle and operator-set changes:
+    :meth:`~src.digital_twin.state.DashboardState.what_if` already accepts both, and the
+    generic :meth:`~src.digital_twin.state.DashboardState.view` dispatch passes neither — so
+    the request rides along as this wrapper at the one entry point that has a caller-supplied
+    change set, and no dispatch signature changes. A bare ``--view I`` with no ``--change``
+    needs no wrapper: the generic dispatch already reaches the engine with a null change set
+    (a legal "what if we hold?" request) in Normal Mode, so view I is reachable with or
+    without it.
+    """
+
+    def __init__(self, state: Any, *, mode: str, delta_fractions: Mapping[str, float]) -> None:
+        self._state = state
+        self._mode = mode
+        self._deltas = dict(delta_fractions)
+
+    def view(self, view_id: str) -> Any:
+        if str(view_id) in _WHAT_IF_IDS:
+            return self._state.what_if(delta_fractions=self._deltas or None, mode=self._mode)
+        return self._state.view(view_id)
+
+    def capabilities(self) -> Any:
+        return self._state.capabilities()
+
+
+def _parse_changes(pairs: Sequence[str]) -> dict[str, float]:
+    """``--change NAME=PERCENT`` pairs -> the delta-fraction mapping :meth:`what_if` takes.
+
+    ``PERCENT`` is percent of the variable's current value (``kiln_fuel_rate_tph=-5`` asks for
+    −5 %), converted to the signed fraction the engine's ``delta_fractions`` argument is. The
+    name is validated against :func:`src.schema.manipulated_variables` — the schema's own list,
+    not one restated here — so a typo fails at parse time with the valid names, before any
+    session is built.
+    """
+    valid = manipulated_variables()
+    deltas: dict[str, float] = {}
+    for pair in pairs:
+        name, separator, number = str(pair).partition("=")
+        name = name.strip()
+        if not separator or not name:
+            raise SystemExit(f"--change expects NAME=PERCENT (e.g. kiln_fuel_rate_tph=-5), got {pair!r}")
+        if name not in valid:
+            raise SystemExit(
+                f"{name!r} is not a manipulated variable; the what-if engine may only "
+                f"move {list(valid)}"
+            )
+        try:
+            percent = float(number)
+        except ValueError:
+            raise SystemExit(
+                f"--change expects NAME=PERCENT with PERCENT a number, got {number!r}"
+            ) from None
+        deltas[name] = percent / 100.0
+    return deltas
+
+
 def _scenario_names(scenarios: Config) -> tuple[str, ...]:
     """The selectable scenario names, read from ``configs/scenarios.yaml`` and nowhere else."""
     return tuple(str(regime["name"]) for regime in scenarios.get_path("regime_schedule.regimes"))
@@ -304,6 +388,9 @@ def build_parser(scenario_names: Sequence[str] = ()) -> argparse.ArgumentParser:
     example = "  python app.py --view J --seed 20240101"
     if scenario_names:
         example += f" --scenario {scenario_names[0]!r}"
+    whatif_example = (
+        "  python app.py --view I --change kiln_fuel_rate_tph=-5 --mode EXPERIMENTAL"
+    )
     parser = argparse.ArgumentParser(
         prog="python app.py",
         description=(
@@ -322,6 +409,7 @@ def build_parser(scenario_names: Sequence[str] = ()) -> argparse.ArgumentParser:
             "  python app.py --skip-models --no-browser\n"
             "  python app.py --view B --view E --out reports/twins.html\n"
             f"{example}\n"
+            f"{whatif_example}   # what-if: -5 % fuel, Experimental Mode (PRD 16.1)\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -339,6 +427,17 @@ def build_parser(scenario_names: Sequence[str] = ()) -> argparse.ArgumentParser:
         help="operating regime to drive the live session with (from configs/scenarios.yaml)",
     )
     parser.add_argument("--seed", type=int, help="override configs/scenarios.yaml simulation.seed")
+    parser.add_argument(
+        "--change", action="append", metavar="NAME=PERCENT", default=None,
+        help="what-if change for one manipulated variable, as percent of its current value "
+        "(e.g. kiln_fuel_rate_tph=-5 for -5 %%; repeatable; view I only, PRD 16.1)",
+    )
+    parser.add_argument(
+        "--mode", default="NORMAL", choices=list(labels.OPTIMIZATION_MODE_VALUES),
+        help="what-if mode for view I: NORMAL holds every change inside the calibrated "
+        "envelope; EXPERIMENTAL allows beyond it and banners every result as low-reliability "
+        "(PRD 16.1)",
+    )
     parser.add_argument(
         "--advance", type=float, default=0.0, metavar="MINUTES",
         help="step the live clock this many simulated minutes before rendering (default: 0)",
@@ -364,6 +463,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     view_ids = tuple(args.views or DEFAULT_VIEWS)
     if args.seed is not None:
         scenarios = _scenarios_config(args.seed)
+    # PRD 16.1's mode toggle / operator-set changes reach view I only; naming them without
+    # requesting view I would be a silent no-op, so it is an error instead.
+    if (args.change or args.mode != "NORMAL") and not any(
+        view_id in _WHAT_IF_IDS for view_id in view_ids
+    ):
+        print(
+            "error: --change / --mode drive view I (What-If Simulation); request it with "
+            "--view I",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        deltas = _parse_changes(args.change or ())
+    except SystemExit as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
 
     from src.digital_twin.session import DashboardSession, ModelLayer
     from src.digital_twin.state import DashboardState
@@ -395,7 +510,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     try:
         html, view_seconds = build_document(
-            DashboardState.from_session(session),
+            _WhatIfRequest(
+                DashboardState.from_session(session),
+                mode=args.mode,
+                delta_fractions=deltas,
+            )
+            if (deltas or args.mode != "NORMAL")
+            else DashboardState.from_session(session),
             view_ids,
             settings=session.settings,
             theme_name=args.theme,
