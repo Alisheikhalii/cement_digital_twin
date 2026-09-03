@@ -416,15 +416,21 @@ explore beyond the calibrated envelope, and it always carries the low-reliabilit
 > Experimental clipped to 4.975 (−20.27 %) even with `enforce_envelope: false`. That is a good thing
 > to say out loud: *"even the exploration mode will not leave the physical range of the tag."*
 
-> **⚠ Experimental Mode is not reachable from the command line.** `DashboardState.view(view_id)`
-> dispatches as `getattr(self, key)(frame=frame)` — it passes **only** `frame`, so `mode` keeps its
-> `"NORMAL"` default. `app.py` exposes **no `--mode` flag**. Both modes are fully implemented and
-> tested in the view layer; only the *CLI surface* is missing. Use §6.2.
+> **⚠ The CLI reaches both modes as of the View I wave.** `app.py` now accepts
+> `--change NAME=PERCENT` (repeatable; percent of the variable's current value) and
+> `--mode {NORMAL,EXPERIMENTAL}` — both view-I-only flags, so naming either without
+> `--view I` is an error, never a silent no-op. The generic `view()` dispatch still passes
+> only `frame`, so the flags ride along through a wrapper at the CLI entry point; a bare
+> `--view I` with no `--change` remains the legal "what if we hold?" request in Normal Mode.
+> §6.2's Python path still works and is the one to use when you want the raw view model in
+> the room; §6.3 is the CLI path.
 
-### 6.2 The Python path — how to actually demonstrate both modes
+### 6.2 The Python path — how to show both modes from a REPL
 
-Run this in a terminal (or a Python REPL) with the room watching. It is the only way to show
-Experimental Mode today. **This snippet was executed and its output is reproduced below** — the field
+Run this in a terminal (or a Python REPL) with the room watching. Since the View I wave the
+CLI path (§6.3) reaches the same two modes without Python; this snippet remains the one to
+use when you want the raw view model — the sliders, the notes and the notices — printed
+live. **This snippet was executed and its output is reproduced below** — the field
 names are the real ones, not plausible ones.
 
 > **Run it from the repository root.** `import src...` resolves against the current directory in a
@@ -507,18 +513,31 @@ Each slider carries the **exact configured step size** the engine offers, so a c
 the engine's steps and never in a step of its own. Note that `absolute_range` does not widen: the
 schema range is the floor and ceiling in both modes.
 
-### 6.3 If you cannot run Python in the room
+### 6.3 The CLI path — the export, with a change and a mode
 
-Fall back to view I from the CLI and be explicit about what it is:
+Since the View I wave, the export itself carries the mode toggle and the operator-set change
+(the flags the Python snippet in §6.2 sets by hand):
 
 ```sh
-python app.py --no-browser --seed 20240101 --view I --out reports/d5_whatif.html
+# Normal Mode: "reduce fuel by 5 %" — inside the +/-10 % bound
+python app.py --no-browser --seed 20240101 --view I \
+  --change kiln_fuel_rate_tph=-5 --out reports/d5_whatif_normal.html
+
+# Experimental Mode: "reduce fuel by 25 %" — needs the +/-30 % bound, and is bannered as
+# low-reliability everywhere on the screen
+python app.py --no-browser --seed 20240101 --view I \
+  --change kiln_fuel_rate_tph=-25 --mode EXPERIMENTAL --out reports/d5_whatif_experimental.html
 ```
 
-This shows the configured sliders, their bounds and step sizes, and the engine's answer for a null
-change set, in Normal Mode. Say: *"these are the levers and the bounds the engine will accept; the
-mode switch is implemented in the engine and not yet wired to this export."* Do **not** imply you
-changed something.
+`PERCENT` is percent of the variable's current value (so `-5` is the −5 % of §6.2), the name
+is validated against the schema's manipulated-variable list at parse time, and the flag is
+rejected unless view I is requested — naming `--change` or `--mode` without `--view I` exits
+with an error rather than silently ignoring it. The rendered screen is the full view-I panel:
+the sliders with their configured bounds and step sizes, the requested-change table with the
+engine's snapped/clipped flags and notes verbatim, the before/after comparison, the
+constraint and envelope rows, and — in Experimental Mode — the fixed low-reliability banner,
+which the renderer draws from the payload and never awards itself. Omit `--change` for the
+null "what if we hold?" request, exactly as before the flags existed.
 
 ### Say this
 

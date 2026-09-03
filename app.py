@@ -59,6 +59,7 @@ from src.visualization import (
     intelligence_view,
     optimization_view,
     overview_view,
+    process_view,
     svg_twin,
     theme,
     what_if_view,
@@ -138,6 +139,20 @@ def _is_whatif(model: Any) -> bool:
     manipulated variables, and only view I asks for them.
     """
     return hasattr(model, "sliders") and hasattr(model, "view")
+
+
+def _is_process(model: Any) -> bool:
+    """True for the process detail screens (C / D / F), whose view models carry components.
+
+    Duck-typed on the two fields :class:`~src.digital_twin.state.ProcessView` adds over the
+    other screens — the ``components`` tuple of :class:`~src.digital_twin.state.EquipmentDetail`
+    cards plus the ``panels`` tuple of grouped readouts — so the routing stays shape-based
+    like :func:`_is_twin` and :func:`_is_whatif`, and one renderer serves all three screens
+    (and any future ``ProcessView``) with no view-id branching. No other screen's model
+    carries both: A has stages/plant, B/E line/snapshot, G specific/total, H
+    predictions/anomaly, I sliders/view, J a view with recommendation/baselines.
+    """
+    return hasattr(model, "components") and hasattr(model, "panels")
 
 
 def _source_is_synthetic(state: Any) -> bool:
@@ -237,6 +252,10 @@ def build_document(
                 )
             elif _is_whatif(model):
                 body = what_if_view.render_what_if(
+                    model, settings=settings, theme_name=theme_name
+                )
+            elif _is_process(model):
+                body = process_view.render_process(
                     model, settings=settings, theme_name=theme_name
                 )
             else:
