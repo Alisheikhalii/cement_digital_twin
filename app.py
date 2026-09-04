@@ -17,7 +17,7 @@ How to launch it
 
     python app.py                                   # the animated twin (view B) -> reports/
     python app.py --view B --view E --out twin.html  # both twin screens
-    python app.py --skip-models --no-browser        # ~0.4 s: twin only, no model layer
+    python app.py --skip-models --no-browser        # ~4.5 s measured: twin only, no model layer
     python app.py --view J --scenario "Low oxygen condition" --seed 20240101
     python app.py --view I --change kiln_fuel_rate_tph=-5 --mode EXPERIMENTAL
     python app.py --help                            # every flag, every valid view and scenario
@@ -59,6 +59,7 @@ from src.visualization import (
     intelligence_view,
     optimization_view,
     overview_view,
+    presentation_view,
     process_view,
     svg_twin,
     theme,
@@ -153,6 +154,19 @@ def _is_process(model: Any) -> bool:
     predictions/anomaly, I sliders/view, J a view with recommendation/baselines.
     """
     return hasattr(model, "components") and hasattr(model, "panels")
+
+
+def _is_presentation(model: Any) -> bool:
+    """True for Factory Presentation Mode (PRD 29), the overlay of views A and J.
+
+    Duck-typed on the two view models :class:`~src.digital_twin.state.PresentationViewModel`
+    composes — the ``overview`` and ``optimization`` fields no other screen's model carries —
+    so the routing stays shape-based like :func:`_is_process` and :func:`_is_whatif`. This is
+    not an eleventh :data:`~src.digital_twin.state.VIEWS` row: directive item 2 fixes the
+    dashboard at ten screens, and PRD §29 defines this mode as an alternate rendering of views
+    1 and 4, reached through :class:`_PresentationRequest`.
+    """
+    return hasattr(model, "overview") and hasattr(model, "optimization")
 
 
 def _source_is_synthetic(state: Any) -> bool:
@@ -258,6 +272,10 @@ def build_document(
                 body = process_view.render_process(
                     model, settings=settings, theme_name=theme_name
                 )
+            elif _is_presentation(model):
+                body = presentation_view.render_presentation(
+                    model, settings=settings, theme_name=theme_name
+                )
             else:
                 body = _payload_html(model)
         except Exception as exc:  # noqa: BLE001 - reported honestly, never substituted
@@ -355,6 +373,35 @@ class _WhatIfRequest:
         return self._state.capabilities()
 
 
+#: The ids that name Factory Presentation Mode (PRD 29, directive item 17). Deliberately not
+#: derived from :data:`~src.digital_twin.state.VIEWS` — this mode is an overlay of views A and J
+#: (PRD §17.1: "a simplified overlay/alternate rendering of views 1 and 4, not a separate data
+#: path"), not an eleventh screen, and the registry must stay at its directive-item-2 ten rows.
+_PRESENTATION_IDS: frozenset[str] = frozenset({"P", "presentation"})
+
+
+class _PresentationRequest:
+    """Serve the PRD 29 presentation id from ``state.presentation()``; every other view delegates.
+
+    The same pattern :class:`_WhatIfRequest` established for the surface the generic
+    :meth:`~src.digital_twin.state.DashboardState.view` dispatch cannot reach:
+    ``DashboardState.presentation`` composes the view A / view J builders, and this wrapper is
+    the one place the composition is wired in — no dispatch signature changes, and a state
+    without a ``presentation`` method keeps working for every other id.
+    """
+
+    def __init__(self, state: Any) -> None:
+        self._state = state
+
+    def view(self, view_id: str) -> Any:
+        if str(view_id) in _PRESENTATION_IDS:
+            return self._state.presentation()
+        return self._state.view(view_id)
+
+    def capabilities(self) -> Any:
+        return self._state.capabilities()
+
+
 def _parse_changes(pairs: Sequence[str]) -> dict[str, float]:
     """``--change NAME=PERCENT`` pairs -> the delta-fraction mapping :meth:`what_if` takes.
 
@@ -422,11 +469,15 @@ def build_parser(scenario_names: Sequence[str] = ()) -> argparse.ArgumentParser:
             "H, I and J need the model layer, so they are unavailable under --skip-models and "
             "will say so rather than show a substitute number. View A renders either way, but "
             "its AI status and anomaly status tiles read the model layer too, so under "
-            "--skip-models they state the models' own unavailable reason.\n\n"
+            "--skip-models they state the models' own unavailable reason. P (Factory "
+            "Presentation Mode, PRD 29) overlays A and J, so it renders either way and its "
+            "recommendation-derived cards state the model layer's own reason under "
+            "--skip-models.\n\n"
             "examples:\n"
             "  python app.py\n"
             "  python app.py --skip-models --no-browser\n"
             "  python app.py --view B --view E --out reports/twins.html\n"
+            "  python app.py --view P --out reports/presentation.html   # PRD 29 overlay\n"
             f"{example}\n"
             f"{whatif_example}   # what-if: -5 % fuel, Experimental Mode (PRD 16.1)\n"
         ),
@@ -438,8 +489,9 @@ def build_parser(scenario_names: Sequence[str] = ()) -> argparse.ArgumentParser:
         dest="views",
         action="append",
         metavar="ID",
-        choices=[row[0] for row in VIEWS] + [row[1] for row in VIEWS],
-        help=f"screen to render, repeatable (default: {' '.join(DEFAULT_VIEWS)} — the animated twin)",
+        choices=[row[0] for row in VIEWS] + [row[1] for row in VIEWS] + sorted(_PRESENTATION_IDS),
+        help=f"screen to render, repeatable (default: {' '.join(DEFAULT_VIEWS)} — the animated twin; "
+        "P/presentation is the PRD 29 Factory Presentation Mode overlay of views A and J)",
     )
     parser.add_argument(
         "--scenario", metavar="NAME", choices=list(scenario_names) or None,
@@ -528,14 +580,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "unavailable": ", ".join(described["capabilities"]["missing"]) or "nothing",
     }
     try:
+        state: Any = DashboardState.from_session(session)
+        # The two request wrappers, composed: presentation serves the PRD 29 overlay id, and
+        # the what-if request (when the caller set a mode or changes) rides on top of it, so a
+        # command naming both I and P reaches each screen through its own surface.
+        if any(view_id in _PRESENTATION_IDS for view_id in view_ids):
+            state = _PresentationRequest(state)
+        if deltas or args.mode != "NORMAL":
+            state = _WhatIfRequest(state, mode=args.mode, delta_fractions=deltas)
         html, view_seconds = build_document(
-            _WhatIfRequest(
-                DashboardState.from_session(session),
-                mode=args.mode,
-                delta_fractions=deltas,
-            )
-            if (deltas or args.mode != "NORMAL")
-            else DashboardState.from_session(session),
+            state,
             view_ids,
             settings=session.settings,
             theme_name=args.theme,

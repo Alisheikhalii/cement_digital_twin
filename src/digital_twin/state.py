@@ -89,6 +89,19 @@ VIEWS: tuple[tuple[str, str, str, str], ...] = (
 _VIEW_BY_ID: Mapping[str, tuple[str, str, str, str]] = {row[0]: row for row in VIEWS}
 _VIEW_BY_KEY: Mapping[str, tuple[str, str, str, str]] = {row[1]: row for row in VIEWS}
 
+#: The PRD 29 Factory Presentation Mode row. Deliberately **not** an eleventh :data:`VIEWS` row:
+#: directive item 2 fixes the dashboard at ten screens (pinned by test), and PRD §29 defines this
+#: mode as "a simplified overlay/alternate rendering of views 1 and 4, not a separate data path" —
+#: so its header row lives beside the registry without joining it, and
+#: :meth:`DashboardState.presentation` composes the view A / view J builders rather than adding a
+#: data path of its own.
+_PRESENTATION_ROW: tuple[str, str, str, str] = (
+    "P",
+    "presentation",
+    "Factory Presentation Mode",
+    "Plant-manager overlay of the Plant Overview and AI Optimization screens (PRD 29)",
+)
+
 
 # =============================================================================
 # Shared view-model pieces
@@ -554,6 +567,31 @@ class OptimizationViewModel:
         return payload
 
 
+@dataclass(frozen=True, slots=True)
+class PresentationViewModel:
+    """Factory Presentation Mode (PRD 29, directive item 17): the plant-manager overlay.
+
+    PRD §29 fixes this mode as "a simplified overlay/alternate rendering of views 1 and 4, not a
+    separate data path", so this view model *is* those two view models - carried whole, never
+    rebuilt or summarized here: ``overview`` (the item-3 stage chain and the Model B anomaly
+    tile) and ``optimization`` (the Model C recommendation payload views A's AI tile and view J
+    both read). Every number a presentation renderer shows is therefore one of those payloads'
+    own numbers; a value neither carries is the renderer's to state as unavailable, never to
+    compute. Not a :data:`VIEWS` row - see :data:`_PRESENTATION_ROW`.
+    """
+
+    header: ViewHeader
+    overview: OverviewView
+    optimization: OptimizationViewModel
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "header": self.header.describe(),
+            "overview": self.overview.describe(),
+            "optimization": self.optimization.describe(),
+        }
+
+
 # =============================================================================
 # The per-frame snapshot the ten views share
 # =============================================================================
@@ -680,7 +718,12 @@ class DashboardState:
         timestamp: str | None = None,
         notices: Sequence[str] = (),
     ) -> ViewHeader:
-        _, key, title, subtitle = _VIEW_BY_ID[view_id]
+        row = _VIEW_BY_ID.get(view_id)
+        if row is None and view_id == _PRESENTATION_ROW[0]:
+            row = _PRESENTATION_ROW
+        if row is None:
+            raise KeyError(f"{view_id!r} is not a dashboard view")
+        _, key, title, subtitle = row
         return ViewHeader(
             view_id=view_id,
             key=key,
@@ -729,7 +772,12 @@ class DashboardState:
         return base
 
     # -- view A ------------------------------------------------------------------------------
-    def overview(self, frame: _Frame | None = None) -> OverviewView:
+    def overview(
+        self,
+        frame: _Frame | None = None,
+        *,
+        optimization: "OptimizationViewModel | None" = None,
+    ) -> OverviewView:
         """View A: the Quarry/feed → kiln → clinker → mill → product chain (item 3).
 
         PRD 18.1's two AI tiles are filled by *reuse*, not by new computation: the anomaly tile
@@ -740,6 +788,10 @@ class DashboardState:
         Model C actually said on this instant, stated as unavailable when they were not run -
         and it means this screen now pays the optimizer's cost when the model layer is present
         (under ``--skip-models`` both tiles are the fast unavailable branch).
+
+        ``optimization`` lets a caller that already built the view J model on this frame hand it
+        in, so :meth:`presentation` composes both screens for one optimizer run instead of two.
+        The default (``None``) builds it here exactly as before - view A's behavior is unchanged.
         """
         frame = frame or self.frame()
         by_name = frame.equipment_by_name()
@@ -767,13 +819,14 @@ class DashboardState:
             if caps.anomaly
             else AnomalyState.unavailable("kiln", stamp)
         )
+        ai_model = self.optimization(frame) if optimization is None else optimization
         return OverviewView(
             header=self._header("A", frame),
             stages=tuple(stages),
             plant=frame.kpi(layout.PLANT_KPI_TITLE),
             snapshot=frame.snapshot,
             equipment=frame.equipment,
-            ai_status=_ai_status_tile(self.optimization(frame).view),
+            ai_status=_ai_status_tile(ai_model.view),
             anomaly_status=_anomaly_status_tile(anomaly),
         )
 
@@ -1003,6 +1056,30 @@ class DashboardState:
             mode=mode,
             view=view,
             quality_descriptions=labels.RECOMMENDATION_QUALITY_DESCRIPTION,
+        )
+
+    # -- presentation (PRD 29, directive item 17) --------------------------------------------
+    def presentation(self, frame: _Frame | None = None, *, mode: str = "NORMAL") -> PresentationViewModel:
+        """Factory Presentation Mode: views 1 and 4 composed, computed nothing (PRD 29).
+
+        The overlay the PRD describes - not a separate data path. The Model C payload comes from
+        the same :meth:`optimization` builder view J renders, and the plant state / Model B
+        verdict from the same :meth:`overview` assembly view A renders. The one ``optimization``
+        pass is *shared*: :meth:`overview` is handed the model this builder already built, so the
+        optimizer runs once for the whole overlay rather than once per screen.
+        """
+        frame = frame or self.frame()
+        optimization = self.optimization(frame, mode=mode)
+        overview = self.overview(frame, optimization=optimization)
+        return PresentationViewModel(
+            header=self._header(
+                _PRESENTATION_ROW[0],
+                frame,
+                timestamp=optimization.view.timestamp or frame.snapshot.timestamp,
+                notices=self._decision_notices(mode),
+            ),
+            overview=overview,
+            optimization=optimization,
         )
 
     # -- dispatch ----------------------------------------------------------------------------
