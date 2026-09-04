@@ -45,11 +45,15 @@ narrate the AI screens from your notes rather than reading every number aloud.
 *(History: earlier builds rendered only B and E, printing the other eight as a raw JSON payload.
 The JSON fallback still exists in `app.py` as a safety net, but no A–J screen uses it.)*
 
-### 0.3 There is no Colab notebook
+### 0.3 The Colab notebook
 
-PRD 28 specifies each demo as "a single Colab cell (Section 25, cell 11)". **No `.ipynb` exists in
-this repository.** Every demo below is therefore a **command-line invocation**. If the customer was
-promised a Colab link, reset that expectation before the meeting.
+PRD 28 specifies each demo as "a single Colab cell (Section 25, cell 11)". That notebook now
+exists: `notebooks/00_cement_digital_twin_demo.ipynb` — the twelve PRD §25 cells in order, with
+the five demos as single re-runnable cells in its section 11. It is thin orchestration over the
+importable `src/` package (no logic of its own), so this guide's CLI invocations and the notebook
+produce the same screens. The CLI path below remains the fastest way to run one demo locally;
+the notebook is the one-click path for a Colab audience (`Runtime → Run all`, then section 11).
+See `docs/COLAB_NOTEBOOK_IMPLEMENTATION_REPORT.md` for what was validated where.
 
 ### 0.4 The model layer is slow; budget for it
 
@@ -675,19 +679,21 @@ before each demo; items move.
 |---|---|---|---|
 | 1 | Ten rendered dashboard screens (PRD 18) | **10 of 10 rendered** (B, E — the SVG twin; J, H, A, G, I — and C, D, F via one shared process renderer). | None needed — every screen renders. |
 | 2 | Live/interactive dashboard (PRD 19.1 loop) | **No loop, no server, no interactivity.** `app.py` writes one static HTML file. | §0.1, §1.3 — re-export with `--advance`. |
-| 3 | Each demo as a single Colab cell (PRD 25 cell 11, PRD 28) | **No `.ipynb` exists in the repo.** | Every demo here is a CLI invocation. |
+| 3 | Each demo as a single Colab cell (PRD 25 cell 11, PRD 28) | **Built** — `notebooks/00_cement_digital_twin_demo.ipynb`, section 11: one cell per demo, re-runnable, no manual setup after cells 1–8. | The CLI invocations in this guide remain the local path. |
 | 4 | Anomaly view's **"Inject abnormal condition"** control + `DemoInjector` (PRD 15, 28.3) | **Does not exist.** Referenced in a docstring and in PRD 23's tree; no such symbol. | §4 — schedule the regime with `--scenario` instead. |
 | 5 | **Experimental What-if Mode** reachable in the UI (PRD 16.1, 28.5) | **Exposed.** `--mode {NORMAL,EXPERIMENTAL}` on the CLI (view I only). | §6.3 — the CLI flag. |
 | 6 | Operator-set what-if changes (PRD 16.1) | **Exposed.** `--change NAME=PERCENT`, repeatable, validated against the schema's variable list. | §6.3 — the CLI flag. |
 | 7 | Before/after **chart** with visible transition delay (PRD 16.2) | **Built for view I** — a self-contained SVG transition chart (each moved variable's commanded setpoint path: hold, then configured ramp; zero plotting dependencies). The plant's response path is not on the payload, so the chart states that instead of drawing an interpolated curve. | §5 — the chart renders in the view I export. |
 | 8 | **Factory Presentation Mode** (PRD 29) | **Implemented** (`--view P`): the A + J overlay, five cards (two stability cards honestly unavailable), five-stage chain, §21 verbatim, forbidden-content sweeps test-pinned. See §7. | §7. |
-| 9 | **"Run Demo" scripted sequence** (PRD 28, directive item 19) | **Not built.** Each demo is run by hand; PRD's "single Colab cell" framing is unsatisfied because no notebook exists (row 3). | Pre-build artefacts per §1.4. |
+| 9 | **"Run Demo" scripted sequence** (PRD 28, directive item 19) | **Built as the notebook's section 11** — five standalone demo cells in `notebooks/00_cement_digital_twin_demo.ipynb`, in PRD 28 order, each rendering and exporting its screens. | The notebook's `Runtime → Run all` is the scripted sequence; this guide's CLI commands remain for single demos. |
 | 10 | An accurate `--skip-models` cost in `app.py`'s own docstring | **Fixed** — the docstring says "~4.5 s measured". | §0.4 — the measured table. |
 
-**One more caution.** PRD 28 assumes the demos are *scripted and reproducible*. They are reproducible
-— fix `--seed` and the screens are identical, enforced by `tests/test_task6_reproducibility.py`. They
-are **not** scripted: there is no single command that runs Demo 1 through Demo 5. Pre-building per
-§1.4 is the substitute.
+**One more caution.** PRD 28 assumes the demos are *scripted and reproducible*. They are
+reproducible — fix the seed (the notebook reads it from `configs/scenarios.yaml`; the CLI takes
+`--seed`) and the screens are identical, enforced by `tests/test_task6_reproducibility.py`. They
+are scripted at the notebook level: `notebooks/00_cement_digital_twin_demo.ipynb` section 11 runs
+Demo 1 through Demo 5 as five standalone cells. The CLI path still has no single command for all
+five — pre-building per §1.4 remains the substitute there.
 
 ---
 

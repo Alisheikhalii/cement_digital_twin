@@ -73,12 +73,13 @@ tests/            pytest suite: physics conservation, causality, leakage, provid
   B/E, designed HTML screens for A, C, D, F, G, H, I, J — plus the Factory Presentation Mode
   overlay (`--view P`, PRD §29). What remains open is recorded in `docs/PROJECT_STATE.md`: the PRD
   §17 non-lettered views (Time-Series Explorer, Model Performance, Data Quality, Factory Data
-  Requirements), PRD §18.1 trend sparklines, the Colab notebook (PRD §25), and the scripted
-  one-command demo sequence (PRD §28).
+  Requirements) and PRD §18.1 trend sparklines.
 - The dashboard is a **static HTML export**, not a live server: `app.py` writes one self-contained
   file. No refresh loop, no click interactivity — see `docs/DEMO_GUIDE.md` §0.1.
-- There is no Colab notebook in this repository; `src/` is importable, which is the NFR-7 requirement
-  the notebook would have relied on.
+- The PRD §25 Colab notebook exists at `notebooks/00_cement_digital_twin_demo.ipynb`: the twelve
+  §25 cells in order plus the five §28 demos as single re-runnable cells in its section 11 —
+  thin orchestration over the importable `src/` package (NFR-7). See
+  `docs/COLAB_NOTEBOOK_IMPLEMENTATION_REPORT.md`.
 - Known architectural notes and deliberate non-fixes are listed in `docs/ARCHITECTURE.md`.
 
 ## Path to a real system
