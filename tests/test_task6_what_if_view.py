@@ -91,7 +91,7 @@ _PANEL: dict[str, Any] = {
         "by_horizon": {},
         "transition": {
             "rows": 125, "minutes": 25.0, "dt_seconds": 12.0, "hold_minutes": 5.0,
-            "ramp_minutes": {"kiln_fuel_rate_tph": 10.0},
+            "ramp_minutes": {"kiln_fuel_rate_tph": 10.0, "kiln_feed_rate_tph": 15.0},
         },
         "endpoint_agreement_relative": 0.004,
         "endpoint_converged": True,
@@ -256,12 +256,85 @@ def test_the_before_after_table_shows_the_payloads_own_numbers(
 
 
 def test_the_transition_summary_is_stated_as_numbers(settings: DashboardSettings) -> None:
-    """The PRD 16.3 *chart* is not drawn (no Task-6 renderer draws charts), but the delay
-    information the trajectory carries — window, hold, ramp — is rendered as text, so the
-    transition is carried even without the picture."""
+    """Beneath the chart, the delay the trajectory carries — window, hold, ramp — is rendered
+    as text too, so the transition's timing is carried as numbers as well as a picture."""
     html = what_if_view.render_what_if(StubWhatIfModel(), settings=settings)
     assert "25" in html and "5" in html  # window minutes and hold minutes
-    assert "kiln_fuel_rate_tph" in html  # the ramp table names its variable
+    assert "kiln_fuel_rate_tph" in html  # the ramp summary names its variable
+
+
+def test_the_transition_chart_draws_each_moved_variables_command_path(
+    settings: DashboardSettings,
+) -> None:
+    """PRD 16.2/16.3: one polyline per moved variable — the engine's own hold-then-ramp
+    command, reconstructed from payload numbers only, so the move is visibly not an
+    instantaneous jump. Both stub variables moved, so two lines; the hold guide, the 0%/100%
+    rails and the window-end tick are all present, and each legend entry names its variable's
+    own ramp minutes and commanded move (the real magnitudes the normalised picture omits)."""
+    html = what_if_view.render_what_if(StubWhatIfModel(), settings=settings)
+    assert 'data-role="whatif-transition"' in html
+    assert html.count("<polyline") == 2  # one per moved variable, none invented
+    assert 'class="dt-wi__guide"' in html  # the hold, marked where it ends
+    assert ">0%</text>" in html and ">100%</text>" in html  # the baseline and commanded rails
+    assert "hold ends" in html and "25.00 min" in html  # window end as the axis' last tick
+    # The legend carries the timing and the magnitudes the normalised lines cannot.
+    assert "ramp 10.00 min" in html and "ramp 15.00 min" in html
+    assert "complete at 15.00 min" in html  # hold 5 + ramp 10 — the delay, as a number
+    assert "6.240" in html and "5.902" in html  # the commanded move itself
+
+
+def test_the_transition_chart_states_when_no_variable_moved(
+    settings: DashboardSettings,
+) -> None:
+    """A request that moves nothing (the null change set the generic dispatch sends) has no
+    trajectory to draw — the absence is stated, and no empty or decorative chart is."""
+    panel = dict(_PANEL)
+    view = StubWhatIfView(
+        panel=panel, requested=(),
+    )
+    html = what_if_view.render_what_if(StubWhatIfModel(view=view), settings=settings)
+    assert "No manipulated variable moved" in html
+    assert "<svg" not in html and "<polyline" not in html
+
+
+def test_a_moved_variable_without_ramp_minutes_is_stated_not_timed(
+    settings: DashboardSettings,
+) -> None:
+    """A moved variable whose ramp time the payload does not state is named — no ramp is
+    invented for it (the engine always carries one, so this is the robustness branch), and a
+    transition summary with no numeric window gets the same stated absence."""
+    panel = dict(_PANEL)
+    response = dict(panel["predicted_process_response"])
+    response["transition"] = {
+        "rows": 125, "minutes": 25.0, "dt_seconds": 12.0, "hold_minutes": 5.0,
+        "ramp_minutes": {},  # nothing states a ramp — no command path is drawable
+    }
+    panel["predicted_process_response"] = response
+    html = what_if_view.render_what_if(
+        StubWhatIfModel(view=StubWhatIfView(panel=panel)), settings=settings
+    )
+    assert "names no ramp time" in html
+    assert "kiln_fuel_rate_tph" in html  # the variable is named, not silently dropped
+    assert "<polyline" not in html
+
+    response["transition"] = {"minutes": "not a number"}  # no numeric window at all
+    panel["predicted_process_response"] = response
+    html = what_if_view.render_what_if(
+        StubWhatIfModel(view=StubWhatIfView(panel=panel)), settings=settings
+    )
+    assert "no numeric transition window" in html
+    assert "<polyline" not in html
+
+
+def test_the_transition_chart_carries_the_response_path_honesty_note(
+    settings: DashboardSettings,
+) -> None:
+    """The plant's response path is not on the payload — the chart says so rather than
+    interpolating a curve between the baseline and settled state (a fabricated delay would
+    be exactly the thing PRD 16.2 forbids passing off as the trajectory)."""
+    html = what_if_view.render_what_if(StubWhatIfModel(), settings=settings)
+    assert "not carried by this payload" in html
+    assert "no response curve is drawn" in html
 
 
 def test_a_rejected_request_states_there_is_no_trajectory(

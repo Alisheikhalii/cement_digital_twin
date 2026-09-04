@@ -17,11 +17,12 @@ already carries under ``WhatIfView.panel``:
 * the constraints and envelope checks — per-constraint and per-check rows, PASS/REJECTED/
   FLAGGED in the payload's own words, so the banner can be read per constraint and not just
   overall;
-* the transition — the trajectory summary the payload carries (rows, minutes, hold, ramps).
-  The PRD 16.3 *chart* is not drawn here: no Task-6 renderer draws charts (the deferred
-  Plotly-optional decision, same class as view H's G-6 skip and view G's trend-channel skip).
-  What the payload's ``transition`` dict states is rendered as text; a rejected request states
-  that there is no trajectory to show — a rejected what-if is never simulated.
+* the transition — the PRD 16.3 chart, drawn as a self-contained inline SVG of each moved
+  variable's *commanded* setpoint path (the engine's own hold-then-ramp arithmetic, so the
+  move is visibly not an instantaneous jump), with the trajectory summary (rows, minutes,
+  hold, ramps) as numbers beneath it. The plant's response path is not on the payload —
+  only its settled endpoints are — so no response curve is invented; a rejected request
+  states that there is no trajectory to show — a rejected what-if is never simulated.
 
 Like :mod:`src.visualization.optimization_view` (the closest precedent — view J renders from
 the same ``Recommendation``-shaped panel), this module only renders. It reads the frozen view
@@ -53,6 +54,18 @@ NO_TRAJECTORY_TEXT: Final = (
     "this request was rejected before any simulation ran, so there is no transition to show"
 )
 
+#: What the chart's caption states about the half of PRD 16.2 the payload does not carry. The
+#: commanded setpoint path is payload-exact (hold + each variable's configured ramp — the same
+#: linear ramp the scheduler's ``_RampedSetpoint`` applies); the plant's *response* path is not
+#: on the payload at all, and an interpolated curve would be a fabricated delay — the exact
+#: thing PRD 16.2 forbids passing off as the trajectory.
+COMMAND_PATH_NOTE: Final = (
+    "Commanded setpoint paths are payload-exact: the engine's own hold and configured ramp "
+    "arithmetic, drawn per moved variable. The plant's response path between the baseline and "
+    "the settled state is not carried by this payload — only its endpoints (the tables above) "
+    "and the endpoint agreement are — so no response curve is drawn."
+)
+
 #: The verdict pill kinds. PASS is ok, REJECTED is alarm, NO SAFE RECOMMENDATION is warn: a
 #: refusal is a display state (item 16's rule, carried to view I), not a crash.
 _VERDICT_PILL: Final[Mapping[str, str]] = {
@@ -69,7 +82,25 @@ def _panel_style() -> str:
         ".dt-wi__badges{display:flex;flex-wrap:wrap;gap:.4em;align-items:center;}"
         ".dt-wi__sliders{display:grid;gap:var(--dt-gap);"
         "grid-template-columns:repeat(auto-fill,minmax(19em,1fr));}"
-        "</style>"
+        ".dt-wi__chart{width:100%;height:auto;display:block;background:var(--dt-bg);"
+        "border:var(--dt-border-width) solid var(--dt-border);border-radius:var(--dt-radius);}"
+        ".dt-wi__axis{stroke:var(--dt-border);stroke-width:1;}"
+        ".dt-wi__rail{stroke:var(--dt-text-muted);stroke-width:1;stroke-dasharray:2 3;"
+        "opacity:.4;}"
+        ".dt-wi__guide{stroke:var(--dt-text-muted);stroke-width:1;stroke-dasharray:4 4;"
+        "opacity:.5;}"
+        ".dt-wi__cmd{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round;}"
+        ".dt-wi__tick{fill:var(--dt-text-muted);font-family:var(--dt-font-mono);"
+        "font-size:11px;}"
+        ".dt-wi__note{fill:var(--dt-text-muted);font-family:var(--dt-font-sans);"
+        "font-size:11px;}"
+        ".dt-wi__legend{display:flex;flex-wrap:wrap;gap:var(--dt-gap-sm) var(--dt-gap);"
+        "font-size:var(--dt-size-label);color:var(--dt-text-muted);"
+        "margin-top:var(--dt-gap-sm);}"
+        ".dt-wi__legend-item{display:inline-flex;align-items:center;"
+        "gap:var(--dt-gap-sm);}"
+        ".dt-wi__swatch{display:inline-block;width:1.4em;height:0;"
+        "border-top:3px solid;}</style>"
     )
 
 
@@ -360,13 +391,15 @@ def _settled_table(settled: Mapping[str, Any], fmt: Any) -> str:
 
 
 def _response_section(view: Any, fmt: Any) -> str:
-    """The predicted response: settled state, before/after, transition summary, savings line.
+    """The predicted response: settled state, before/after, transition chart, savings line.
 
-    The transition *chart* is PRD 16.3's requirement and is not drawn here (no Task-6 renderer
-    draws charts — the deferred Plotly-optional decision, the view-H G-6 class of skip). What
-    the payload states about the trajectory (window, hold, ramps, endpoint agreement) renders
-    as text, so the delay information is carried as numbers even without the picture; a
-    rejected request states that no trajectory exists — it was never simulated.
+    The PRD 16.3 chart is drawn by :func:`_transition_chart` — each moved variable's commanded
+    path over the payload's own window, so the hold and the configured ramp (the delay before
+    anything is asked of the plant, and the non-instantaneous move itself) are visible rather
+    than only numeric. What the payload states about the trajectory (window, hold, ramps,
+    endpoint agreement) renders as text beneath the chart; the plant's response path is not on
+    the payload and is never interpolated. A rejected request states that no trajectory exists
+    — it was never simulated.
     """
     panel = view.panel if isinstance(view.panel, Mapping) else {}
     response = panel.get("predicted_process_response")
@@ -381,19 +414,21 @@ def _response_section(view: Any, fmt: Any) -> str:
             f"{theme.html(NO_TRAJECTORY_TEXT)}.</p>"
         )
     else:
-        ramps = ", ".join(
-            f"{theme.html(name)} {_num_or_raw(minutes, fmt)} min"
-            for name, minutes in (transition.get("ramp_minutes") or {}).items()
-        )
-        transition_html = (
-            '<p class="dt-mono dt-muted">'
-            f"window {theme.html(transition.get('minutes'))} min · "
-            f"{theme.html(transition.get('rows'))} rows · "
-            f"dt {theme.html(transition.get('dt_seconds'))} s · "
-            f"hold {theme.html(transition.get('hold_minutes'))} min"
-            + (f" · ramps: {ramps}" if ramps else "")
-            + "</p>"
-        )
+        transition_html = _transition_chart(transition, tuple(view.requested), fmt)
+        if isinstance(transition, Mapping):
+            ramps = ", ".join(
+                f"{theme.html(name)} {_num_or_raw(minutes, fmt)} min"
+                for name, minutes in (transition.get("ramp_minutes") or {}).items()
+            )
+            transition_html += (
+                '<p class="dt-mono dt-muted">'
+                f"window {theme.html(transition.get('minutes'))} min · "
+                f"{theme.html(transition.get('rows'))} rows · "
+                f"dt {theme.html(transition.get('dt_seconds'))} s · "
+                f"hold {theme.html(transition.get('hold_minutes'))} min"
+                + (f" · ramps: {ramps}" if ramps else "")
+                + "</p>"
+            )
     agreement = response.get("endpoint_agreement_relative")
     agreement_html = (
         f'<p class="dt-muted">Endpoint agreement (ramped trajectory vs settled state): '
@@ -438,6 +473,200 @@ def _response_section(view: Any, fmt: Any) -> str:
         f"{caveat_html}"
         "</div>"
     )
+
+
+# =============================================================================
+# PRD 16.2 / 16.3 — the transition chart: inline SVG, no chart dependency
+# =============================================================================
+#: Chart geometry, in SVG user-space units — plain numbers, never ``var(--dt-*)``: a custom
+#: property resolves in a CSS property, not in a geometry attribute (the twin's rule).
+_CHART_W: Final[float] = 640.0
+_CHART_H: Final[float] = 200.0
+_CHART_PAD_L: Final[float] = 52.0
+_CHART_PAD_R: Final[float] = 14.0
+_CHART_PAD_T: Final[float] = 16.0
+_CHART_PAD_B: Final[float] = 26.0
+
+#: The y domain, in "percent of each variable's own commanded move" — padded so a 2 px stroke
+#: never clips at the 0 % / 100 % rails. The per-variable normalisation is labelled on the
+#: chart; each variable's real baseline → simulated numbers stay in the legend and the
+#: requested-change table, so the picture carries the *timing* and the tables the magnitude.
+_Y_MIN: Final[float] = -6.0
+_Y_MAX: Final[float] = 106.0
+
+#: One stroke colour per drawn variable, in payload order. These are display distinctions
+#: only — *not* provenance badges (view I's channel is RECOMMENDATION throughout) — six deep
+#: like the PRD 16.1 variable set, and wrapping deterministically beyond that.
+_CHART_STROKES: Final[tuple[str, ...]] = (
+    "var(--dt-accent)",
+    "var(--dt-accent-alt)",
+    "var(--dt-ok)",
+    "var(--dt-warn)",
+    "var(--dt-truth)",
+    "var(--dt-configuration)",
+)
+
+
+def _transition_chart(
+    transition: Any, requested: tuple[Mapping[str, Any], ...], fmt: Any
+) -> str:
+    """The PRD 16.3 transition chart as a self-contained inline SVG — the command path.
+
+    What is drawn is the *commanded* setpoint path of every moved variable: the engine holds
+    each setpoint at its baseline for ``hold_minutes``, then ramps it to the simulated value
+    over that variable's configured ``ramp_minutes`` — the scheduler's own linear ramp
+    (``_RampedSetpoint``), so a ramp of 0 is drawn as the step it is, and a ramp longer than
+    the window is drawn still climbing at the window's end. Every number on the chart is a
+    payload number; the only arithmetic here is that same hold-then-ramp interpolation, so
+    the picture is the trajectory the engine commanded, reconstructed — never invented.
+
+    The plant's *response* path is not on the payload (only its settled endpoints and the
+    endpoint agreement are), so no response curve is drawn; the caption says so. Unusable or
+    absent data is stated, never substituted: a request that moved nothing says so, and a
+    moved variable whose ramp time the payload does not state is named rather than given an
+    invented ramp.
+    """
+
+    def _f(value: Any) -> float | None:
+        try:
+            return None if value is None else float(value)
+        except (TypeError, ValueError):
+            return None
+
+    if not isinstance(transition, Mapping):
+        return (
+            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: the transition summary is '
+            "not in a shape this renderer can chart, so no transition is drawn.</p>"
+        )
+    minutes = _f(transition.get("minutes"))
+    hold = _f(transition.get("hold_minutes"))
+    if minutes is None or minutes <= 0.0 or hold is None or hold < 0.0:
+        return (
+            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: the payload carries no '
+            "numeric transition window, so no transition is drawn rather than one with "
+            "invented timing.</p>"
+        )
+
+    ramps = transition.get("ramp_minutes")
+    ramps = ramps if isinstance(ramps, Mapping) else {}
+    series: list[tuple[str, str, float, float, float]] = []
+    untimed: list[str] = []
+    for item in requested:
+        name = str(item.get("name", ""))
+        baseline, value = _f(item.get("baseline")), _f(item.get("value"))
+        if baseline is None or value is None or baseline == value:
+            continue  # the engine's own definition of "moved": value differs from baseline
+        ramp = _f(ramps.get(name))
+        if ramp is None or ramp < 0.0:
+            untimed.append(name)
+            continue
+        series.append((name, str(item.get("unit", "")), baseline, value, ramp))
+    if not series:
+        if untimed:
+            names = ", ".join(theme.html(name) for name in untimed)
+            return (
+                f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: the payload names no '
+                f"ramp time for {names}, so no command path is drawn rather than one with "
+                "invented timing.</p>"
+            )
+        return (
+            '<p class="dt-muted">No manipulated variable moved — the request holds the '
+            "current setpoints, so there is no transition to draw.</p>"
+        )
+
+    plot_w = _CHART_W - _CHART_PAD_L - _CHART_PAD_R
+    plot_h = _CHART_H - _CHART_PAD_T - _CHART_PAD_B
+    bottom = _CHART_PAD_T + plot_h
+
+    def x(minute: float) -> float:
+        return _CHART_PAD_L + max(0.0, min(minute, minutes)) / minutes * plot_w
+
+    def y(pct: float) -> float:
+        return _CHART_PAD_T + (1.0 - (pct - _Y_MIN) / (_Y_MAX - _Y_MIN)) * plot_h
+
+    right = _CHART_PAD_L + plot_w
+    rails = (
+        f'<line class="dt-wi__rail" x1="{_CHART_PAD_L:.1f}" x2="{right:.1f}" '
+        f'y1="{y(0.0):.1f}" y2="{y(0.0):.1f}"/>'
+        f'<line class="dt-wi__rail" x1="{_CHART_PAD_L:.1f}" x2="{right:.1f}" '
+        f'y1="{y(100.0):.1f}" y2="{y(100.0):.1f}"/>'
+        f'<text class="dt-wi__tick" x="{_CHART_PAD_L - 8:.1f}" y="{y(0.0) + 4:.1f}" '
+        'text-anchor="end">0%</text>'
+        f'<text class="dt-wi__tick" x="{_CHART_PAD_L - 8:.1f}" y="{y(100.0) + 4:.1f}" '
+        'text-anchor="end">100%</text>'
+    )
+    axis = (
+        f'<line class="dt-wi__axis" x1="{_CHART_PAD_L:.1f}" x2="{right:.1f}" '
+        f'y1="{bottom:.1f}" y2="{bottom:.1f}"/>'
+    )
+    guide = ""
+    if 0.0 < hold < minutes:
+        guide = (
+            f'<line class="dt-wi__guide" x1="{x(hold):.1f}" x2="{x(hold):.1f}" '
+            f'y1="{_CHART_PAD_T + 2:.1f}" y2="{bottom:.1f}"/>'
+        )
+    ticks = [
+        f'<text class="dt-wi__tick" x="{x(0.0):.1f}" y="{_CHART_H - 8:.1f}" '
+        'text-anchor="middle">0</text>'
+    ]
+    if 0.0 < hold < minutes:
+        ticks.append(
+            f'<text class="dt-wi__tick" x="{x(hold):.1f}" y="{_CHART_H - 8:.1f}" '
+            f'text-anchor="middle">{theme.html(_num(hold, fmt))} · hold ends</text>'
+        )
+    ticks.append(
+        f'<text class="dt-wi__tick" x="{right:.1f}" y="{_CHART_H - 8:.1f}" '
+        f'text-anchor="end">{theme.html(_num(minutes, fmt))} min</text>'
+    )
+    notes = (
+        f'<text class="dt-wi__note" x="{_CHART_PAD_L:.1f}" y="{_CHART_PAD_T - 4:.1f}">'
+        "commanded setpoint, % of each move</text>"
+        f'<text class="dt-wi__note" x="{right:.1f}" y="{_CHART_PAD_T - 4:.1f}" '
+        'text-anchor="end">minutes from request · window end</text>'
+    )
+
+    lines: list[str] = []
+    legend: list[str] = []
+    for index, (name, unit, baseline, value, ramp) in enumerate(series):
+        stroke = _CHART_STROKES[index % len(_CHART_STROKES)]
+        complete = hold + ramp
+        points = [(0.0, 0.0), (hold, 0.0)]
+        if complete <= minutes:
+            points += [(complete, 100.0), (minutes, 100.0)]
+            timing = f"complete at {theme.html(_num(complete, fmt))} min"
+        else:
+            # The window ends mid-ramp: the last point is the ramp's own linear position
+            # there — the payload-exact truncation, never a flattened tail.
+            points.append((minutes, 100.0 * (minutes - hold) / ramp))
+            timing = "still ramping at window end"
+        poly = " ".join(f"{x(px):.1f},{y(py):.1f}" for px, py in points)
+        lines.append(
+            f'<polyline class="dt-wi__cmd" style="stroke:{stroke}" points="{poly}"/>'
+        )
+        move = f"{_num(baseline, fmt)} → {_num(value, fmt)}" + (
+            f" {theme.html(unit)}" if unit else ""
+        )
+        legend.append(
+            f'<span class="dt-wi__legend-item"><i class="dt-wi__swatch" '
+            f'style="border-top-color:{stroke}"></i>{theme.html(name)} · ramp '
+            f"{theme.html(_num_or_raw(ramp, fmt))} min · {timing} · {move}</span>"
+        )
+
+    svg = (
+        f'<svg class="dt-wi__chart" viewBox="0 0 {_CHART_W:.0f} {_CHART_H:.0f}" role="img" '
+        'aria-label="Commanded setpoint transition over the what-if window: the hold at the '
+        'baseline, then each moved variable&#39;s configured ramp; the window ends where the '
+        'settled state is reported.">'
+        f"{rails}{axis}{guide}{''.join(ticks)}{notes}{''.join(lines)}</svg>"
+    )
+    return (
+        '<div class="dt-wi__chartbox" data-role="whatif-transition">'
+        f"{svg}"
+        f'<div class="dt-wi__legend">{"".join(legend)}</div>'
+        f'<p class="dt-muted">{theme.html(COMMAND_PATH_NOTE)}</p>'
+        "</div>"
+    )
+
 
 
 # =============================================================================

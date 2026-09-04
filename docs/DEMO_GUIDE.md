@@ -327,15 +327,18 @@ energy trade-off explicitly (before/after table + chart with visible transition 
 
 **What it proves:** the mill model demonstrates a real trade-off — there is no free lunch.
 
-> **⚠ Two limits on this demo as built.**
-> 1. **You cannot set what-if changes from the command line.** `app.py` has no `--change` flag, and
->    `DashboardState.view("I")` dispatches without a change set — so a CLI-rendered view I shows the
->    **configured sliders and the engine's answer for a null change set**, not a change you chose in
->    the room. To set an actual change you must use the Python snippet in §6.2.
-> 2. **There is no chart.** Any view wanting one degrades through
->    `src.visualization.charts.missing_chart_html` rather than importing a plotting library. The
->    before/after **numbers** are in the payload; the **chart is not built**. Bring your own slide if
->    the room needs a picture.
+> **⚠ One limit on this demo as built.**
+> 1. **What-if changes are set on the command line** (`--change separator_speed_rpm=+5 --view I`,
+>    repeatable, with `--mode NORMAL|EXPERIMENTAL` — see §6.3). A CLI-rendered view I shows the
+>    configured sliders and the engine's answer for the change you named on the command line;
+>    the Python snippet in §6.2 remains the path when you want the raw view model live.
+>
+> The transition chart **is** built: view I's export carries a self-contained SVG of each moved
+> variable's commanded setpoint path — the hold at the baseline, then the variable's configured
+> ramp — so the transition delay is visible as a picture, not only as numbers. The plant's
+> *response* path is not carried by the payload (only its settled endpoints are), so the chart
+> states that rather than drawing an interpolated curve; read the settled numbers from the
+> before/after table beside it.
 
 ### Steps
 
@@ -362,9 +365,11 @@ energy trade-off explicitly (before/after table + chart with visible transition 
    python app.py --skip-models --no-browser --seed 20240101 \
        --scenario "Low separator speed"  --advance 30 --view E --out reports/d4_coarse.html
    ```
-   Open both. Compare the four tags side by side. **This is the honest CLI substitute for the
-   What-if slider**: same physics, same trade-off, selected by scenario instead of by slider.
-4. For a genuine operator-set change, run the Python snippet in §6.2 live in a terminal.
+   Open both. Compare the four tags side by side. Same physics, same trade-off, selected by
+   scenario — a second way to show the same move the What-if slider makes.
+4. For a genuine operator-set change, run the Python snippet in §6.2 live in a terminal — or set
+   the change directly on the command line (`--change separator_speed_rpm=+5 --view I`, §6.3) and
+   let the export render the transition chart with it.
 
 ### Say this
 
@@ -376,8 +381,11 @@ energy trade-off explicitly (before/after table + chart with visible transition 
 
 PRD 16.2 requires the response to arrive with a **visible delay**, and the model does implement
 per-relationship dead time plus lag (PRD 9.4/10.3, every parameter an `ASSUMPTION` documented in
-`SIMULATION_ASSUMPTIONS.md` §5). Show it by exporting the same scenario at increasing `--advance`
-values (§1.3) — the effect builds over successive minutes rather than stepping instantly.
+`SIMULATION_ASSUMPTIONS.md` §5). View I's export shows the delay directly: the transition chart
+draws the hold at the baseline and each variable's configured ramp as a picture, with the window,
+hold and ramp minutes as numbers beneath it. For the *plant's* response building over time, export
+the same scenario at increasing `--advance` values (§1.3) — the effect builds over successive
+minutes rather than stepping instantly.
 
 ---
 
@@ -667,13 +675,13 @@ before each demo; items move.
 
 | # | PRD asks for | State today | Workaround in this guide |
 |---|---|---|---|
-| 1 | Ten rendered dashboard screens (PRD 18) | **2 of 10 rendered** (B, E — the SVG twin). The other eight are correct view models printed as JSON. | §0.2 — lead with B/E, narrate the rest. |
+| 1 | Ten rendered dashboard screens (PRD 18) | **10 of 10 rendered** (B, E — the SVG twin; J, H, A, G, I — and C, D, F via one shared process renderer). | None needed — every screen renders. |
 | 2 | Live/interactive dashboard (PRD 19.1 loop) | **No loop, no server, no interactivity.** `app.py` writes one static HTML file. | §0.1, §1.3 — re-export with `--advance`. |
 | 3 | Each demo as a single Colab cell (PRD 25 cell 11, PRD 28) | **No `.ipynb` exists in the repo.** | Every demo here is a CLI invocation. |
 | 4 | Anomaly view's **"Inject abnormal condition"** control + `DemoInjector` (PRD 15, 28.3) | **Does not exist.** Referenced in a docstring and in PRD 23's tree; no such symbol. | §4 — schedule the regime with `--scenario` instead. |
-| 5 | **Experimental What-if Mode** reachable in the UI (PRD 16.1, 28.5) | **Implemented in the view layer, not exposed.** `view()` passes only `frame`; `app.py` has no `--mode`. | §6.2 — the Python snippet. |
-| 6 | Operator-set what-if changes (PRD 16.1) | **No CLI path.** No `--change` flag; CLI view I gets a null change set. | §6.2 Python, or §5 step 3 scenario substitute. |
-| 7 | Before/after **chart** with visible transition delay (PRD 16.2) | **No chart.** Degrades through `missing_chart_html` by design — zero plotting dependencies. Numbers are present; the picture is not. | §5 — read the numbers, bring a slide. |
+| 5 | **Experimental What-if Mode** reachable in the UI (PRD 16.1, 28.5) | **Exposed.** `--mode {NORMAL,EXPERIMENTAL}` on the CLI (view I only). | §6.3 — the CLI flag. |
+| 6 | Operator-set what-if changes (PRD 16.1) | **Exposed.** `--change NAME=PERCENT`, repeatable, validated against the schema's variable list. | §6.3 — the CLI flag. |
+| 7 | Before/after **chart** with visible transition delay (PRD 16.2) | **Built for view I** — a self-contained SVG transition chart (each moved variable's commanded setpoint path: hold, then configured ramp; zero plotting dependencies). The plant's response path is not on the payload, so the chart states that instead of drawing an interpolated curve. | §5 — the chart renders in the view I export. |
 | 8 | **Factory Presentation Mode** (PRD 29) | **Two config keys and a settings reader only.** No view, no renderer, no KPI cards, no refresh loop. | §7 — approximate the narrative; do not call it Presentation Mode. |
 | 9 | **"Run Demo" scripted sequence** (PRD 28, directive item 19) | **Not built.** Each demo is run by hand. | Pre-build artefacts per §1.4. |
 | 10 | An accurate `--skip-models` cost in `app.py`'s own docstring | **The docstring says "~0.4 s"; measured 4.5 s.** Not corrected here — this wave changed no production file. | §0.4 — the measured table. |
