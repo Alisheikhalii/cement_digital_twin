@@ -68,12 +68,15 @@ tests/            pytest suite: physics conservation, causality, leakage, provid
 
 - The core simulation, data, model and optimization layers (Tasks #1–#5) are complete and covered by
   the test suite.
-- The dashboard layer (Task #6) is **partially complete**. All ten views produce a validated
-  view-model payload; the **two animated twin screens** (`B` kiln, `E` mill) render as finished
-  visuals (`src/visualization/svg_twin.py`). The other eight emit their raw JSON payload rather than
-  an invented visual, on purpose — `app.py:81-93` labels it "View-model payload (no renderer for this
-  screen yet)". See `docs/ARCHITECTURE.md`.
-- "Factory Presentation Mode" (PRD §29) is **not implemented**.
+- The dashboard layer (Task #6) is **substantially complete at the static-export level**: all ten
+  A–J views have a validated view-model payload **and a renderer** — the animated SVG twin for
+  B/E, designed HTML screens for A, C, D, F, G, H, I, J — plus the Factory Presentation Mode
+  overlay (`--view P`, PRD §29). What remains open is recorded in `docs/PROJECT_STATE.md`: the PRD
+  §17 non-lettered views (Time-Series Explorer, Model Performance, Data Quality, Factory Data
+  Requirements), PRD §18.1 trend sparklines, the Colab notebook (PRD §25), and the scripted
+  one-command demo sequence (PRD §28).
+- The dashboard is a **static HTML export**, not a live server: `app.py` writes one self-contained
+  file. No refresh loop, no click interactivity — see `docs/DEMO_GUIDE.md` §0.1.
 - There is no Colab notebook in this repository; `src/` is importable, which is the NFR-7 requirement
   the notebook would have relied on.
 - Known architectural notes and deliberate non-fixes are listed in `docs/ARCHITECTURE.md`.

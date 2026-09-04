@@ -195,30 +195,29 @@ live in one place rather than restated per method.
 | id | key | screen |
 |---|---|---|
 | A | `overview` | Plant Overview |
-| B | `kiln_twin` | Kiln Digital Twin *(rendered)* |
+| B | `kiln_twin` | Kiln Digital Twin |
 | C | `kiln_process` | Preheater & Kiln |
 | D | `clinker_cooler` | Clinker Cooler |
-| E | `mill_twin` | Cement Mill Digital Twin *(rendered)* |
+| E | `mill_twin` | Cement Mill Digital Twin |
 | F | `mill_separator` | Mill & Separator |
 | G | `energy` | Energy Monitoring |
 | H | `intelligence` | AI Prediction & Anomaly |
 | I | `what_if` | What-If Simulation |
 | J | `optimization` | AI Optimization — "Decision support only — the system writes no setpoint" |
 
-**Two of ten screens have a renderer.** `app.py:62-68` duck-types the twin views on the two fields
-`TwinView` adds (`line` and `snapshot`) and sends those to `svg_twin.render_twin`; everything else goes
-through `_payload_html` (`app.py:81-93`), which prints the frozen view model as JSON under the label
-"View-model payload (no renderer for this screen yet)". Its docstring states the intent: "Phase 6D owns
-the per-view renderers. Until they exist this host shows the frozen view model verbatim **rather than a
-prettier screen built from values it made up**."
+**All ten screens have a renderer.** `app.py` duck-types each view model on shape and dispatches:
+the twin views (`line` + `snapshot`) go to `svg_twin.render_twin`; view J to
+`optimization_view`, H to `intelligence_view`, A to `overview_view`, G to `energy_view`, I to
+`what_if_view`, C/D/F to one shared `process_view`, and the Factory Presentation Mode overlay
+(`--view P`, not an eleventh registry row) to `presentation_view`. The `_payload_html` JSON
+fallback (`app.py`) still exists as a safety net, but no A–J screen reaches it.
 
-This is the single most important thing to understand before "finishing" the dashboard: the eight
-payload screens are not unimplemented data, they are unimplemented *pixels*. The numbers exist, are
-validated and are asserted against in tests; only the drawing is missing. Adding a renderer must not
-add a number — a renderer may only read a view model (`state.py:7-9`).
+The rule the renderers are held to: **a renderer may only read a view model** (`state.py:7-9`) — it
+adds no number, computes nothing and owns no limit. The numbers exist, are validated and are
+asserted against in tests; the drawing only presents them.
 
 A view that raises is re-raised as a `RuntimeError` naming the screen and "is never replaced by a
-placeholder number" (`app.py:113-114`).
+placeholder number" (`app.py:282`).
 
 ### Frame coherence
 
@@ -268,9 +267,11 @@ the contract is satisfiable by a non-synthetic source, it gives the dashboard a 
 of an import error, and each message is the requirement text for the adapter that will replace it.
 
 **`configs/dashboard.yaml: presentation.refresh_seconds` has no consumer.** It is parsed and validated
-(`src/digital_twin/settings.py:257, 303-304`) and echoed by `describe()` (`:351`), but nothing drives
-anything from it — the presentation loop it describes belongs to Factory Presentation Mode (PRD §29),
-which is not implemented. Noted so it is not mistaken for a live setting.
+(`src/digital_twin/settings.py`) and echoed by `describe()`, but nothing drives
+anything from it — the static HTML export has no refresh loop, so the cadence it describes has no
+mechanism. Factory Presentation Mode (PRD §29) itself **is** implemented
+(`src/visualization/presentation_view.py`, `--view P`); only the loop is not. Noted so the key is not
+mistaken for a live setting.
 
 **`alarm_fraction_of_span: 0.0`** (`configs/dashboard.yaml:25`) means the alarm band is the documented
 range boundary itself, with the amber band at `warn_fraction_of_span: 0.10` inside it. Both are

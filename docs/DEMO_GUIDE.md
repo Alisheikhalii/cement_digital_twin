@@ -25,24 +25,25 @@ state frozen at the moment of export**. Motion on screen means "this stream is f
 sampled at export time", not "this is updating live". To show change over time you **re-export**
 with `--advance` (see §1.3). Say "exported snapshot", never "live feed".
 
-### 0.2 Eight of the ten screens render as raw JSON, not as a designed screen
+### 0.2 All ten screens render; the AI story is now screens, not JSON
 
-Only **B (Kiln Digital Twin)** and **E (Cement Mill Digital Twin)** have a renderer — the animated
-SVG twin. The other eight views (**A, C, D, F, G, H, I, J**) are **fully built and correct view
-models**, but `app.py` prints them as an indented JSON payload in a `<pre>` block, under the label
-*"View-model payload (no renderer for this screen yet)"*.
-
-This is deliberate (`app.py:_payload_html`): the alternative was a prettier screen built from
-invented numbers. **The numbers are real; the presentation is not built.** Plan accordingly:
+All ten views have a renderer: **B (Kiln Digital Twin)** and **E (Cement Mill Digital Twin)** — the
+animated SVG twin — plus **J, H, A, G, I** and **C, D, F** (one shared process renderer), and the
+**Factory Presentation Mode** overlay (`--view P`, §7). A view that cannot be built is stated as a
+failure, never filled in with a substitute number.
 
 | Screen | Use it as | Renderer? |
 |---|---|---|
 | **B**, **E** | The visual centrepiece. Show these full-screen. | **Yes — animated SVG twin** |
-| A, C, D, F, G | Talk-over evidence: point at a value in the JSON to substantiate a claim. | No — JSON payload |
-| H, I, J | The AI story. Read the headline fields out loud; do not project the raw JSON to a non-technical room. | No — JSON payload |
+| A, C, D, F, G | The process and energy story, as designed screens. | **Yes** |
+| H, I, J | The AI story, as designed screens. | **Yes** |
+| **P** | The plant-manager overlay of A + J (PRD 29). | **Yes** |
 
-For a plant-manager audience (PRD Persona 3), **lead with B and E** and narrate H/I/J from your own
-notes rather than projecting them.
+For a plant-manager audience (PRD Persona 3), **lead with `--view P`** (§7) or with B and E, and
+narrate the AI screens from your notes rather than reading every number aloud.
+
+*(History: earlier builds rendered only B and E, printing the other eight as a raw JSON payload.
+The JSON fallback still exists in `app.py` as a safety net, but no A–J screen uses it.)*
 
 ### 0.3 There is no Colab notebook
 
@@ -53,9 +54,8 @@ promised a Colab link, reset that expectation before the meeting.
 ### 0.4 The model layer is slow; budget for it
 
 Measured on the development machine at the time of writing, from `app.py`'s own stderr timings.
-**Do not trust the "~0.4 s" figure in `app.py`'s module docstring for `--skip-models` — it is wrong
-by an order of magnitude.** The docstring was not corrected in this wave because this wave changed no
-production file; it is logged as a gap in §9.
+**`--skip-models` costs ~4.5 s, not sub-second** — the frame load dominates; `app.py`'s docstring
+carries the measured figure.
 
 | Invocation | Measured | Gets you |
 |---|---|---|
@@ -184,8 +184,8 @@ mock-up.
 4. Walk the material path on screen: feed → preheater → precalciner → rotary kiln → cooler → clinker.
    Note that **every animation parameter is bound to simulated state**, never to a decorative
    constant: a stream's motion is driven by that tag's fraction of its documented range.
-5. Scroll to **view A (Plant Overview)** — JSON payload. Point at each stage's `state` field:
-   `RUNNING` / `IDLE` / `UNKNOWN`, derived from that stage's own throughput tag.
+5. Scroll to **view A (Plant Overview)** — a designed screen: the five-stage chain with each stage's
+   `RUNNING` / `IDLE` / `UNKNOWN` state word, derived from that stage's own throughput tag.
 6. Flip between `d1_start.html` and `d1_steady.html` to show the transition.
 
 ### Say this
@@ -198,8 +198,8 @@ mock-up.
 
 - `UNKNOWN` on a stage is **honest**, not broken: it means the provider supplied no throughput value
   for that stage. Say so plainly if it appears.
-- View A is JSON (§0.2). Don't apologise for it — say the presentation layer for the overview screen
-  is the next build increment, and the data behind it is what you're showing.
+- View A is a rendered screen (§0.2). Walk the five-stage chain, the plant KPI group, and the two
+  AI status tiles (they state their own reason when a model is absent).
 
 ---
 
@@ -226,8 +226,8 @@ alone are the expensive part (§0.4). Never build this one live.
    ```
    `High fuel condition` is the "stable but sub-optimal — slightly high fuel relative to feed" state
    PRD 28.2 asks for.
-2. Open `reports/d2_optimization.html`. This is **view J**, a JSON payload (§0.2). Read the fields
-   out loud rather than projecting them raw.
+2. Open `reports/d2_optimization.html`. This is **view J**, a designed screen (§0.2). Walk it in the
+   order below; the headline, gates and quality pill are all rendered.
 3. **Lead with the header notices.** View J always carries `AI Recommendation`, `Decision Support
    Only`, and *"Simulated saving from a synthetic model — not a guaranteed real-world saving."* Read
    the third one verbatim. It is the most credible thing you will say all meeting.
@@ -239,7 +239,9 @@ alone are the expensive part (§0.4). Never build this one live.
    - `evaluated` and `rejected_candidates` — how many candidates were considered and how many the
      hard constraints threw out. The rejection count is the proof that filtering happened.
    - `payload.recommendation` — the setpoint changes, the objective breakdown, and the baseline
-     comparison.
+     comparison: the **five PRD 14.5 rows** on the shared metric set, unavailable rows showing
+     their own reason; beside it the **multi-horizon predicted-state grid**, each value with its
+     `±` ensemble spread — never a confidence percentage.
    - `recommendation_quality` — **HIGH / MEDIUM / LOW**, glossed by `quality_descriptions` in the
      same payload.
 
@@ -298,7 +300,7 @@ detection, the warning card, and the rule-engine suggested action.*
 4. Switch to `d3_lowo2.html` view B. **Point at `oxygen_percent` and `CO_ppm` together** — the
    physical signature of the regime. `CO_ppm` will run above its 0–300 ppm band; that is the
    documented, intended behaviour under fault, not a simulation error.
-5. Scroll to **view H (AI Prediction & Anomaly)** — JSON payload. Read out:
+5. Scroll to **view H (AI Prediction & Anomaly)** — a designed screen (§0.2). Read out:
    - the **anomaly hypothesis**, labelled as a hypothesis, never as a diagnosis;
    - the **rule-engine suggested action**, labelled as rule-based and explicitly distinct from the
      AI recommendation;
@@ -555,7 +557,7 @@ null "what if we hold?" request, exactly as before the flags existed.
 
 ---
 
-## 7. Factory Presentation Mode — **not implemented**
+## 7. Factory Presentation Mode — implemented
 
 **PRD 29** specifies a simplified rendering path for a plant-manager audience (Persona 3), showing
 only the chain
@@ -569,46 +571,42 @@ Stability, Quality Stability, Anomalies Detected — every card labelled *"Synth
 *"Simulation Estimate"*, a visible link to the PRD 21 transfer-strategy disclaimer, and no raw tag
 lists, model internals, code or numeric confidence percentage anywhere.
 
-> ### ⚠ This mode does not exist yet. Do not promise it or demo around it.
->
-> **What exists:** exactly two configuration keys and their typed reader.
->
-> | Artefact | Where | State |
-> |---|---|---|
-> | `presentation.refresh_seconds: 2.0` | `configs/dashboard.yaml` | `ASSUMPTION` — wall-clock cadence of the presentation loop. **The loop it configures does not exist.** |
-> | `presentation.headline_decimals: 1` | `configs/dashboard.yaml` | `ASSUMPTION` — rounding of the headline KPI numbers. **The headline KPIs do not exist.** |
-> | `PresentationSettings` | `src/digital_twin/settings.py` | Reads the two keys above. Nothing consumes it. |
-> | `labels.presentation_card_label()` | `src/labels.py` | Owns the two mandatory card labels. **Currently used only for the twin header badge**, not for any presentation card. |
->
-> **What does not exist:** the view itself. There is **no view id**, no renderer, no KPI cards, no
-> five-stage chain, no refresh loop, and no presentation entry point in `app.py`. None of the five
-> PRD 29 KPI cards is computed anywhere.
->
-> `refresh_seconds: 2.0` is worth one extra caution: it is an `ASSUMPTION` about a presentation
-> loop's cadence, and it is **not** a PRD performance budget. The real budget is **NFR-2: a what-if
-> round trip in under 3 s**. Do not quote 2 s as a system response-time commitment.
+**This mode exists now.** It is a re-rendering of views A and J (not a new data path), reachable
+from the CLI:
 
-### What to do for a plant-manager audience instead
+```sh
+python app.py --no-browser --seed 20240101 --view P --out reports/presentation.html
+```
 
-You can approximate PRD 29's *narrative* with what is built, as long as you don't call it
-Presentation Mode:
+(Pre-build it — the view needs the model layer, so it is a slow one, like view J.)
 
-1. **Current Plant State** → view **B** or **E**, the animated twin. This is the one screen that
-   genuinely looks like a product. Show it full-screen, `--theme light` for a bright room.
-2. **AI Prediction** → view **H**. Read the forecast out loud from your notes; do not project JSON.
-3. **Optimization Opportunity / Recommended Action / Expected Benefit** → view **J**. Read the
-   headline, the quality category, and the simulated-saving caveat.
-4. Every exported file already carries the three honesty badges (*Synthetic Demonstration*,
-   *Decision Support Only*, *Not validated against real plant data*) in its header and the three
-   standing PRD statements in its footer — so the labelling requirement of PRD 29 is met by the
-   export, even though the layout is not.
+What you get, in the PRD's own order:
 
-Steps 2 and 3 mean projecting JSON to a plant manager, which PRD 29 explicitly rules out ("never
-displays raw tag lists, model internals, code"). **So for a Persona 3 audience: show the twin, and
-narrate the AI story from slides you prepared from the payload.** That is the honest shape of this
-demo today.
+| Element | What the card shows |
+|---|---|
+| **Potential Thermal Energy Saving** | view J's `expected_impact` daily-energy delta and per-metric %, labelled "Simulation Estimate" |
+| **Potential Electrical Energy Saving** | same, electrical — labelled "Simulation Estimate" |
+| **Production Stability** | **stated unavailable** — no model computes this metric; the reason is on the card, never a number |
+| **Quality Stability** | **stated unavailable** — same honest gap |
+| **Anomalies Detected** | Model B's own per-instant verdict (a verdict, not a count) |
+| **The five-stage chain** | the PRD 29 sequence, refusal and unavailable states included as display states |
 
----
+Every card carries one of the two mandated labels, the §21 disclaimer is quoted verbatim at the
+bottom, and nothing on the screen is a raw tag list, a model internal, code, or a confidence
+percentage — the sweeps are pinned by tests.
+
+**Two honest limits, stated on the cards themselves:**
+
+1. **The two stability cards carry no number.** PRD 29 *names* Production Stability and Quality
+   Stability as cards; no model in this system computes either metric, and the nearest quantities
+   (Model A's cross-horizon spread, the optimizer's penalty terms) are model internals this mode
+   must not display. The cards state the absence. A number there would be invented.
+2. **`presentation.refresh_seconds` is not consumed.** The export is a static HTML file — there is
+   no refresh loop, and 2 s is an `ASSUMPTION`, not a response-time commitment. The real budget is
+   **NFR-2 (a what-if round trip under 3 s)**.
+
+For a Persona 3 audience this is now the lead screen: run `--view P`, then show the animated twin
+(`--view B`, `--theme light`) for the visual.
 
 ## 8. Honesty script — the lines that must be said, and the ones that must not
 
@@ -682,9 +680,9 @@ before each demo; items move.
 | 5 | **Experimental What-if Mode** reachable in the UI (PRD 16.1, 28.5) | **Exposed.** `--mode {NORMAL,EXPERIMENTAL}` on the CLI (view I only). | §6.3 — the CLI flag. |
 | 6 | Operator-set what-if changes (PRD 16.1) | **Exposed.** `--change NAME=PERCENT`, repeatable, validated against the schema's variable list. | §6.3 — the CLI flag. |
 | 7 | Before/after **chart** with visible transition delay (PRD 16.2) | **Built for view I** — a self-contained SVG transition chart (each moved variable's commanded setpoint path: hold, then configured ramp; zero plotting dependencies). The plant's response path is not on the payload, so the chart states that instead of drawing an interpolated curve. | §5 — the chart renders in the view I export. |
-| 8 | **Factory Presentation Mode** (PRD 29) | **Two config keys and a settings reader only.** No view, no renderer, no KPI cards, no refresh loop. | §7 — approximate the narrative; do not call it Presentation Mode. |
-| 9 | **"Run Demo" scripted sequence** (PRD 28, directive item 19) | **Not built.** Each demo is run by hand. | Pre-build artefacts per §1.4. |
-| 10 | An accurate `--skip-models` cost in `app.py`'s own docstring | **The docstring says "~0.4 s"; measured 4.5 s.** Not corrected here — this wave changed no production file. | §0.4 — the measured table. |
+| 8 | **Factory Presentation Mode** (PRD 29) | **Implemented** (`--view P`): the A + J overlay, five cards (two stability cards honestly unavailable), five-stage chain, §21 verbatim, forbidden-content sweeps test-pinned. See §7. | §7. |
+| 9 | **"Run Demo" scripted sequence** (PRD 28, directive item 19) | **Not built.** Each demo is run by hand; PRD's "single Colab cell" framing is unsatisfied because no notebook exists (row 3). | Pre-build artefacts per §1.4. |
+| 10 | An accurate `--skip-models` cost in `app.py`'s own docstring | **Fixed** — the docstring says "~4.5 s measured". | §0.4 — the measured table. |
 
 **One more caution.** PRD 28 assumes the demos are *scripted and reproducible*. They are reproducible
 — fix `--seed` and the screens are identical, enforced by `tests/test_task6_reproducibility.py`. They
@@ -699,7 +697,8 @@ are **not** scripted: there is no single command that runs Demo 1 through Demo 5
 - [ ] Every artefact in §1.4 pre-built with a **fixed `--seed`**, opened once, and confirmed to render.
 - [ ] The slow model-layer build (Demo 2, Demo 3) done **well before** the meeting — never live.
 - [ ] `--theme light` exports ready if the room is bright.
-- [ ] Slides prepared for views H/I/J so you never project raw JSON to a non-technical audience.
+- [ ] Views H/I/J pre-opened and walked once — they are designed screens now, but the AI story
+      still reads best narrated rather than scanned line by line.
 - [ ] If you plan to show Experimental Mode: a terminal open, `src/` importable, §6.2 snippet tested.
 - [ ] §9 re-read against `docs/PROJECT_STATE.md` — confirm nothing you plan to show has moved.
 - [ ] You can say the three honesty answers in §8 without reading them.
