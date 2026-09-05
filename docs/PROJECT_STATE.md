@@ -2,11 +2,11 @@
 
 **Purpose:** the file a new session reads first. One line per outstanding Task #6 item, plus the
 current commit and test counts. Created at the end of Wave 3A (`docs/WAVE3A_REPORT.md`); last
-substantive wave was the **PRD §25 Colab notebook** (`docs/COLAB_NOTEBOOK_IMPLEMENTATION_REPORT.md`,
-2026-09-04): `notebooks/00_cement_digital_twin_demo.ipynb` (the twelve §25 cells + the five §28
-demos as single cells in its section 11), `tests/test_task6_notebook.py`, and narrow doc
-corrections. The renderer inventory stands: **all ten A–J screens have a renderer, plus the
-`--view P` Presentation overlay.**
+substantive wave was the **Cell 6 resumable training wave** (`docs/CELL6_RESUME_REPORT.md`,
+2026-09-05): `src/notebook_support.py` (per-dataset checkpoint/manifest/resume logic — zero
+frozen-layer changes) and notebook cell 6 rewritten to call it; before that the **PRD §25 Colab
+notebook** (`docs/COLAB_NOTEBOOK_IMPLEMENTATION_REPORT.md`, 2026-09-04). The renderer inventory
+stands: **all ten A–J screens have a renderer, plus the `--view P` Presentation overlay.**
 
 ---
 
@@ -14,10 +14,10 @@ corrections. The renderer inventory stands: **all ten A–J screens have a rende
 
 | | |
 |---|---|
-| **Branch** | `main` — the PRD §25 notebook wave is the tip; see `git log` for the earlier waves. |
-| **HEAD after this wave** | the notebook-wave commit, whose parent is the final gap-audit commit (`655cee1`). Not pinned here: a commit cannot contain its own hash. |
-| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D (`6b27858` merge) → `a056bf9` item 15 reconstruction → Wave View J (`cac1296`) → Wave View J closeout (`89a93ff`) → Wave View J horizon (`963f6d2`) → View H audit (`52ac068`) → Wave View H (`4a70160`) → View H closeout (`cc86f54`) → Wave View A (`8f61802`) → View A closeout pin (`6dfb67b`) → Wave View G (`6ee2d56`) → Wave View I (`091cb4a`) → Wave CDF (`5795e5d`) → Wave View I transition chart (`e057125`) → Wave Item 17 Factory Presentation Mode (`1db6cec`) → final gap audit (`655cee1`) → **PRD §25 notebook + Item 19 + §28 demos** |
-| **Full regression** | **731 passed, 0 xfailed** (PRD §25 notebook wave, 2026-09-04: 715 + the 16 tests of `tests/test_task6_notebook.py`; 4 min 39 s). |
+| **Branch** | `main` — the Cell 6 resume wave is the tip; see `git log` for the earlier waves. |
+| **HEAD after this wave** | the Cell-6-resume-wave commit, whose parent is the PRD §25 notebook-wave commit (`f585b50`). Not pinned here: a commit cannot contain its own hash. |
+| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D (`6b27858` merge) → `a056bf9` item 15 reconstruction → Wave View J (`cac1296`) → Wave View J closeout (`89a93ff`) → Wave View J horizon (`963f6d2`) → View H audit (`52ac068`) → Wave View H (`4a70160`) → View H closeout (`cc86f54`) → Wave View A (`8f61802`) → View A closeout pin (`6dfb67b`) → Wave View G (`6ee2d56`) → Wave View I (`091cb4a`) → Wave CDF (`5795e5d`) → Wave View I transition chart (`e057125`) → Wave Item 17 Factory Presentation Mode (`1db6cec`) → final gap audit (`655cee1`) → PRD §25 notebook + Item 19 + §28 demos (`f585b50`) → **Cell 6 resumable training** |
+| **Full regression** | **742 passed, 0 xfailed** (Cell 6 resume wave, 2026-09-05: 731 + the 11 tests of `tests/test_task6_cell6_resume.py`). |
 | **xfails** | **None.** |
 | **Regression floor** | 428 (directive §4.7). Any drop halts the phase and is investigated — never "fixed" by editing a test. |
 
@@ -56,7 +56,9 @@ stops protecting any frozen test added later, and renames would masquerade as di
 `test_task6_intelligence_view.py` *(Wave View H)* · `test_task6_overview_view.py` *(Wave View A)* ·
 `test_task6_energy_view.py` *(Wave View G)* · `test_task6_what_if_view.py` *(Wave View I)* ·
 `test_task6_process_view.py` *(Wave CDF — one module for all three screens)* ·
-`test_task6_notebook.py` *(PRD §25 notebook wave — static structural contracts on the .ipynb)*
+`test_task6_notebook.py` *(PRD §25 notebook wave — static structural contracts on the .ipynb)* ·
+`test_task6_cell6_resume.py` *(Cell 6 resume wave — reuse-vs-retrain behaviour of
+`src/notebook_support.resumable_training`)*
 
 Plus the stored fixtures the suite owns: `tests/golden/view_j_normal.html` *(Wave View J
 closeout)*, `tests/golden/view_h_normal.html` *(Wave View H)*, `tests/golden/view_a_normal.html`
@@ -101,7 +103,8 @@ transition chart — the docs backlog from
 | **Items 5 / 6 / 9 + item-4 inspector — views C / D / F renderer** | **DONE** (Wave CDF) | `src/visualization/process_view.py` — **one** renderer for all three process detail screens (`ProcessView` shares one payload shape; the renderer reads no view id). Each component renders as a card: its state word, health, driving variable (the same observed `Value` views B/E animate by) and its own output-tag readout; the grouped panels (kiln process, kiln emissions — CO in the main panel only, per item 5 — and mill process) and the item-9 KPI group render whole. **View D's `panels=()` / `kpis=None` is designed content, not a gap** (no PRD §17 row names view D — D-2; its FanFuel/Cooler readouts carry every tag its registry line promises): the renderer states both absences as facts, never as errors, never filled in. `app.py` routes C/D/F via one additive duck-typed `elif` (`_is_process`: `components` + `panels` — the twin's `panel`-singular/`equipment` near-misses pinned by test). Audit verdicts C/D/F all A; 27 tests + three goldens; see `VIEWCDF_AUDIT_AND_IMPLEMENTATION_REPORT.md`. Known gaps: `EquipmentStatus.constraints` is carried but unrendered — **PRD verdict (Wave View I transition chart): no requirement exists** (no §17 row names views C/D/F per D-2; §18.2/§18.3 list tags, not per-equipment constraint rows; §16.3's constraint banner is view I's, already rendered) — the field is payload capacity the provider does not currently supply (the stub serves `constraints=()`; the real path in `synthetic.py` `_bands.per_component` exists but no source asks for any), same treatment as view D's `panels=()`; documented, not built; no trend channels exist on these screens' payloads (and no source asks for any). |
 | **Items 2–13 renderers** | **DONE — all ten screens** (Wave CDF) | Every A–J view now has a renderer: the SVG twin (B/E), view J, view H, view A, view G, view I and — via the one shared `process_view.py` — C, D and F. The payloads were never rewritten; each wave only rendered what they already carried. |
 | **View J golden file** | **DONE — regenerated** (Wave View J closeout; regenerated in the horizon wave) | `tests/golden/view_j_normal.html` — the renderer's whole output for the fixed stub payload, compared byte-for-byte (newline-normalised) by 2 tests in `test_task6_optimization_view.py`. The horizon wave changed the renderer by design and regenerated the fixture with the recorded command (never hand-edited). View I gained its own golden in Wave View I (`tests/golden/view_i_normal.html`). |
-| **Task #6 overall status (updated by the notebook wave, 2026-09-04)** | **Task #6 as originally scoped (A–J renderers + honesty + payload layer) COMPLETE; the PRD §25 notebook and its §28 demo cells are now built** | Full matrix in `TASK6_FINAL_GAP_AUDIT_REPORT.md`: AC-1…AC-24 verified; 6/10 PRD §17 views + §29 overlay implemented (views 6/8/9/10 unlettered, backend work); §28 demos are now single cells in the §25 notebook **and** remain runnable via CLI; stability metrics are honest backend gaps. Recommended next wave: PRD §17 views 8/9 (Model Performance, Data Quality — both backend-then-renderer work) or the FR-10 inject mechanism, which the audit and the notebook both flag. |
+| **Task #6 overall status (updated by the Cell 6 resume wave, 2026-09-05)** | **Task #6 as originally scoped (A–J renderers + honesty + payload layer) COMPLETE; the PRD §25 notebook, its §28 demo cells and per-dataset resumable training are built** | Full matrix in `TASK6_FINAL_GAP_AUDIT_REPORT.md`: AC-1…AC-24 verified; 6/10 PRD §17 views + §29 overlay implemented (views 6/8/9/10 unlettered, backend work); §28 demos are now single cells in the §25 notebook **and** remain runnable via CLI; stability metrics are honest backend gaps. Notebook cell 6 is now resumable at the dataset level with Google Drive persistence (see `CELL6_RESUME_REPORT.md`); real Colab/Drive execution remains unverified from this environment. Recommended next wave: PRD §17 views 8/9 (Model Performance, Data Quality — both backend-then-renderer work) or the FR-10 inject mechanism, which the audit and the notebook both flag. |
+| **Notebook cell 6 resumability** | **DONE** (Cell 6 resume wave, 2026-09-05) | `src/notebook_support.resumable_training` gives PRD §25 cell 6 one checkpoint boundary per dataset (kiln, mill — the accepted scope boundary), a JSON manifest keyed on the PRD 13.4 dataset hash + an `ml.yaml` content digest, artifact-present validation, atomic (write-then-rename) persistence, and Google Drive storage on Colab (Runtime-local fallback, stated honestly). Zero frozen-layer changes — it calls the public `train_model_a`/`train_model_b`/`register_result`/`write_registry` that `train_all` itself calls. 11 tests + a real local controlled execution (fresh / interrupted / resumed, identical `training_summary`); **not** verified on Colab itself. Known gaps: finer-than-dataset granularity is P2 (needs a frozen-layer exception to hook `ModelATrainer`), and the first real Colab run should confirm the Drive mount flow. See `CELL6_RESUME_REPORT.md`. |
 
 ---
 

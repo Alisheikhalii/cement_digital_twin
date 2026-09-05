@@ -22,6 +22,10 @@ models/**/*.joblib
 # -- Generated evaluation / quality reports (rewritten by train.py, quality.py)
 reports/
 
+# -- Notebook cell-6 training checkpoints (src/notebook_support.py): fully
+# regenerable artifacts + manifest, and on Colab they live on Drive anyway.
+checkpoints/
+
 # -- Python bytecode and test caches
 __pycache__/
 *.pyc
