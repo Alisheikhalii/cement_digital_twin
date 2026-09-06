@@ -20,7 +20,8 @@ How to launch it
     python app.py --skip-models --no-browser        # ~4.5 s measured: twin only, no model layer
     python app.py --view J --scenario "Low oxygen condition" --seed 20240101
     python app.py --view I --change kiln_fuel_rate_tph=-5 --mode EXPERIMENTAL
-    python app.py --help                            # every flag, every valid view and scenario
+    python app.py --view OT                          # consolidated bilingual management shell
+    python app.py --help                             # every flag, every valid view and scenario
 
 Cost of each flag, measured on this machine (see ``TASK6_RECOVERY_PLAN.md`` sections 5 B-6 and 10):
 the model layer dominates a full build (~30 s here; the plan records 13.3-16.6 s), the replay run
@@ -58,6 +59,7 @@ from src.visualization import (
     energy_view,
     intelligence_view,
     optimization_view,
+    ot_shell,
     overview_view,
     presentation_view,
     process_view,
@@ -68,6 +70,11 @@ from src.visualization import (
 
 DEFAULT_OUT = Path("reports") / "task6_dashboard.html"
 DEFAULT_VIEWS = ("B",)
+
+#: The consolidated management document (the Cement Plant OT Platform shell) and where it
+#: writes. User-facing branding only — every internal id, module and PRD term is unchanged.
+OT_PLATFORM_IDS: frozenset[str] = frozenset({"OT", "ot-platform"})
+DEFAULT_OT_OUT = Path("reports") / "cement_plant_ot_platform.html"
 
 
 # =============================================================================
@@ -210,6 +217,65 @@ def _payload_html(model: Any) -> str:
     )
 
 
+def build_view_section(
+    state: Any,
+    view_id: str,
+    *,
+    settings: Any,
+    theme_name: str = theme.DARK,
+    animate: bool = True,
+    synthetic: bool | None = None,
+) -> tuple[Any, str]:
+    """Build one screen's view model and render it — the dispatch every entry point shares.
+
+    This is the duck-typed routing :func:`build_document` has always performed, lifted out
+    unchanged so the OT Platform shell (:func:`build_ot_platform_document`) embeds the *same*
+    renderer output the per-view document produces, with no second dispatch to drift from it.
+    Returns ``(model, section_html)``: the frozen view model (for callers that read payloads the
+    renderers do not show, such as the shell's alerts aggregation) and the rendered heading-plus-
+    body section :func:`build_document` wraps in its ``<section>``. ``synthetic`` is the source
+    flag the twin badge derives from; ``None`` derives it here exactly as ``build_document``
+    does (B-7 site 2).
+    """
+    model = state.view(view_id)
+    if synthetic is None:
+        synthetic = _source_is_synthetic(state)
+    if _is_twin(model):
+        body = svg_twin.render_twin(
+            model.snapshot,
+            getattr(model, "equipment", ()),
+            settings=settings,
+            theme_name=theme_name,
+            animate=animate,
+            synthetic=synthetic,
+        )
+    elif _is_intelligence(model):
+        body = intelligence_view.render_intelligence(
+            model, settings=settings, theme_name=theme_name
+        )
+    elif _is_optimization(model):
+        body = optimization_view.render_optimization(
+            model, settings=settings, theme_name=theme_name
+        )
+    elif _is_overview(model):
+        body = overview_view.render_overview(
+            model, settings=settings, theme_name=theme_name
+        )
+    elif _is_energy(model):
+        body = energy_view.render_energy(model, settings=settings, theme_name=theme_name)
+    elif _is_whatif(model):
+        body = what_if_view.render_what_if(model, settings=settings, theme_name=theme_name)
+    elif _is_process(model):
+        body = process_view.render_process(model, settings=settings, theme_name=theme_name)
+    elif _is_presentation(model):
+        body = presentation_view.render_presentation(
+            model, settings=settings, theme_name=theme_name
+        )
+    else:
+        body = _payload_html(model)
+    return model, f"{_heading_html(model, view_id)}{body}"
+
+
 def build_document(
     state: Any,
     view_ids: Sequence[str],
@@ -238,55 +304,50 @@ def build_document(
     for view_id in view_ids:
         started = time.perf_counter()
         try:
-            model = state.view(view_id)
-            if _is_twin(model):
-                body = svg_twin.render_twin(
-                    model.snapshot,
-                    getattr(model, "equipment", ()),
-                    settings=settings,
-                    theme_name=theme_name,
-                    animate=animate,
-                    synthetic=_source_is_synthetic(state),
-                )
-            elif _is_intelligence(model):
-                body = intelligence_view.render_intelligence(
-                    model, settings=settings, theme_name=theme_name
-                )
-            elif _is_optimization(model):
-                body = optimization_view.render_optimization(
-                    model, settings=settings, theme_name=theme_name
-                )
-            elif _is_overview(model):
-                body = overview_view.render_overview(
-                    model, settings=settings, theme_name=theme_name
-                )
-            elif _is_energy(model):
-                body = energy_view.render_energy(
-                    model, settings=settings, theme_name=theme_name
-                )
-            elif _is_whatif(model):
-                body = what_if_view.render_what_if(
-                    model, settings=settings, theme_name=theme_name
-                )
-            elif _is_process(model):
-                body = process_view.render_process(
-                    model, settings=settings, theme_name=theme_name
-                )
-            elif _is_presentation(model):
-                body = presentation_view.render_presentation(
-                    model, settings=settings, theme_name=theme_name
-                )
-            else:
-                body = _payload_html(model)
+            _, section_html = build_view_section(
+                state, view_id, settings=settings, theme_name=theme_name, animate=animate
+            )
         except Exception as exc:  # noqa: BLE001 - reported honestly, never substituted
             raise RuntimeError(
                 f"view {view_id!r} could not be built: {type(exc).__name__}: {exc}"
             ) from exc
         timings[view_id] = time.perf_counter() - started
-        sections.append(
-            f'<section class="dt-app__view">{_heading_html(model, view_id)}{body}</section>'
-        )
+        sections.append(f'<section class="dt-app__view">{section_html}</section>')
     return _document(sections, theme_name=theme_name, meta=meta or {}), timings
+
+
+def build_ot_platform_document(
+    state: Any,
+    *,
+    settings: Any,
+    theme_name: str = theme.DARK,
+    animate: bool = True,
+    meta: Mapping[str, object] | None = None,
+) -> tuple[str, dict[str, float]]:
+    """The consolidated management document: the OT Platform shell over the existing renderers.
+
+    A presentation-layer wrapper only: the state is wrapped once with
+    :class:`_PresentationRequest` (so the shell's Presentation tab reaches
+    ``state.presentation()`` the same way ``--view P`` does), and
+    :func:`src.visualization.ot_shell.build_ot_document` is handed :func:`build_view_section`
+    as its renderer — the very dispatch :func:`build_document` uses. Every technical panel in
+    the result is therefore the existing renderers' own output, embedded verbatim; the shell
+    adds tabs, bilingual explanations and a language switch, and computes nothing. A view that
+    raises fails the whole document (named, never substituted), exactly as ``build_document``
+    behaves.
+    """
+    def _render(view_state: Any, view_id: str) -> tuple[Any, str]:
+        return build_view_section(
+            view_state, view_id, settings=settings, theme_name=theme_name, animate=animate
+        )
+
+    return ot_shell.build_ot_document(
+        _PresentationRequest(state),
+        settings=settings,
+        render_view=_render,
+        theme_name=theme_name,
+        meta=meta,
+    )
 
 
 def _document(
@@ -478,6 +539,7 @@ def build_parser(scenario_names: Sequence[str] = ()) -> argparse.ArgumentParser:
             "  python app.py --skip-models --no-browser\n"
             "  python app.py --view B --view E --out reports/twins.html\n"
             "  python app.py --view P --out reports/presentation.html   # PRD 29 overlay\n"
+            "  python app.py --view OT   # the consolidated management shell (bilingual)\n"
             f"{example}\n"
             f"{whatif_example}   # what-if: -5 % fuel, Experimental Mode (PRD 16.1)\n"
         ),
@@ -489,9 +551,12 @@ def build_parser(scenario_names: Sequence[str] = ()) -> argparse.ArgumentParser:
         dest="views",
         action="append",
         metavar="ID",
-        choices=[row[0] for row in VIEWS] + [row[1] for row in VIEWS] + sorted(_PRESENTATION_IDS),
+        choices=[row[0] for row in VIEWS] + [row[1] for row in VIEWS]
+        + sorted(_PRESENTATION_IDS) + sorted(OT_PLATFORM_IDS),
         help=f"screen to render, repeatable (default: {' '.join(DEFAULT_VIEWS)} — the animated twin; "
-        "P/presentation is the PRD 29 Factory Presentation Mode overlay of views A and J)",
+        "P/presentation is the PRD 29 Factory Presentation Mode overlay of views A and J; "
+        "OT/ot-platform builds the consolidated bilingual management document "
+        f"({DEFAULT_OT_OUT}) and cannot be combined with other views)",
     )
     parser.add_argument(
         "--scenario", metavar="NAME", choices=list(scenario_names) or None,
@@ -532,6 +597,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     scenarios = _scenarios_config(None)
     args = build_parser(_scenario_names(scenarios)).parse_args(argv)
     view_ids = tuple(args.views or DEFAULT_VIEWS)
+    # The consolidated management document embeds all of its tabs by construction, so naming
+    # another view beside it would be a silent no-op — an error instead.
+    ot_requested = any(view_id in OT_PLATFORM_IDS for view_id in view_ids)
+    if ot_requested and len(view_ids) > 1:
+        print(
+            "error: --view OT builds the consolidated management document on its own; name it "
+            "without other views",
+            file=sys.stderr,
+        )
+        return 2
     if args.seed is not None:
         scenarios = _scenarios_config(args.seed)
     # PRD 16.1's mode toggle / operator-set changes reach view I only; naming them without
@@ -583,19 +658,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         state: Any = DashboardState.from_session(session)
         # The two request wrappers, composed: presentation serves the PRD 29 overlay id, and
         # the what-if request (when the caller set a mode or changes) rides on top of it, so a
-        # command naming both I and P reaches each screen through its own surface.
+        # command naming both I and P reaches each screen through its own surface. The OT
+        # Platform document applies its own presentation wrapper internally.
         if any(view_id in _PRESENTATION_IDS for view_id in view_ids):
             state = _PresentationRequest(state)
         if deltas or args.mode != "NORMAL":
             state = _WhatIfRequest(state, mode=args.mode, delta_fractions=deltas)
-        html, view_seconds = build_document(
-            state,
-            view_ids,
-            settings=session.settings,
-            theme_name=args.theme,
-            animate=args.animate,
-            meta=meta,
-        )
+        if ot_requested:
+            html, view_seconds = build_ot_platform_document(
+                state,
+                settings=session.settings,
+                theme_name=args.theme,
+                animate=args.animate,
+                meta=meta,
+            )
+        else:
+            html, view_seconds = build_document(
+                state,
+                view_ids,
+                settings=session.settings,
+                theme_name=args.theme,
+                animate=args.animate,
+                meta=meta,
+            )
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         print(
@@ -606,7 +691,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 3
 
-    out = args.out.expanduser().resolve()
+    # The management document defaults to its own path; an explicit --out is honoured as given.
+    out_path = args.out if (args.out != DEFAULT_OUT or not ot_requested) else DEFAULT_OT_OUT
+    out = out_path.expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
 

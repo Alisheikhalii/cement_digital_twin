@@ -2,11 +2,14 @@
 
 **Purpose:** the file a new session reads first. One line per outstanding Task #6 item, plus the
 current commit and test counts. Created at the end of Wave 3A (`docs/WAVE3A_REPORT.md`); last
-substantive wave was the **Cell 6 resumable training wave** (`docs/CELL6_RESUME_REPORT.md`,
-2026-09-05): `src/notebook_support.py` (per-dataset checkpoint/manifest/resume logic — zero
-frozen-layer changes) and notebook cell 6 rewritten to call it; before that the **PRD §25 Colab
-notebook** (`docs/COLAB_NOTEBOOK_IMPLEMENTATION_REPORT.md`, 2026-09-04). The renderer inventory
-stands: **all ten A–J screens have a renderer, plus the `--view P` Presentation overlay.**
+substantive wave was the **Cement Plant OT Platform shell wave** (`docs/OT_PLATFORM_SHELL_REPORT.md`,
+2026-09-06): one consolidated, bilingual (EN/FA), tabbed, management-facing HTML artifact
+(`reports/cement_plant_ot_platform.html`, `--view OT`) reusing the existing renderers verbatim;
+before that the **Cell 6 resumable training wave** (`docs/CELL6_RESUME_REPORT.md`, 2026-09-05):
+`src/notebook_support.py` (per-dataset checkpoint/manifest/resume logic — zero frozen-layer
+changes) and notebook cell 6 rewritten to call it; before that the **PRD §25 Colab notebook**
+(`docs/COLAB_NOTEBOOK_IMPLEMENTATION_REPORT.md`, 2026-09-04). The renderer inventory stands:
+**all ten A–J screens have a renderer, plus the `--view P` Presentation overlay.**
 
 ---
 
@@ -14,10 +17,10 @@ stands: **all ten A–J screens have a renderer, plus the `--view P` Presentatio
 
 | | |
 |---|---|
-| **Branch** | `main` — the Cell 6 resume wave is the tip; see `git log` for the earlier waves. |
-| **HEAD after this wave** | the Cell-6-resume-wave commit, whose parent is the PRD §25 notebook-wave commit (`f585b50`). Not pinned here: a commit cannot contain its own hash. |
-| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D (`6b27858` merge) → `a056bf9` item 15 reconstruction → Wave View J (`cac1296`) → Wave View J closeout (`89a93ff`) → Wave View J horizon (`963f6d2`) → View H audit (`52ac068`) → Wave View H (`4a70160`) → View H closeout (`cc86f54`) → Wave View A (`8f61802`) → View A closeout pin (`6dfb67b`) → Wave View G (`6ee2d56`) → Wave View I (`091cb4a`) → Wave CDF (`5795e5d`) → Wave View I transition chart (`e057125`) → Wave Item 17 Factory Presentation Mode (`1db6cec`) → final gap audit (`655cee1`) → PRD §25 notebook + Item 19 + §28 demos (`f585b50`) → **Cell 6 resumable training** |
-| **Full regression** | **742 passed, 0 xfailed** (Cell 6 resume wave, 2026-09-05: 731 + the 11 tests of `tests/test_task6_cell6_resume.py`). |
+| **Branch** | `main` — the OT Platform shell wave is the tip; see `git log` for the earlier waves. |
+| **HEAD after this wave** | the OT-Platform-shell-wave commit, whose parent is the Cell-6-resume-wave commit (`33c5dad`). Not pinned here: a commit cannot contain its own hash. |
+| **Wave history** | `1f8107f` baseline → `0ed5e39` directive persisted → `3fa2e7d` Wave 1 → `e4dee7a` Wave 2 → `440602e` Wave 3A → `8cbda49` Wave 3B → `557b935` Wave 3C → `b2915e3` Wave 3C merge → Wave 3D (`6b27858` merge) → `a056bf9` item 15 reconstruction → Wave View J (`cac1296`) → Wave View J closeout (`89a93ff`) → Wave View J horizon (`963f6d2`) → View H audit (`52ac068`) → Wave View H (`4a70160`) → View H closeout (`cc86f54`) → Wave View A (`8f61802`) → View A closeout pin (`6dfb67b`) → Wave View G (`6ee2d56`) → Wave View I (`091cb4a`) → Wave CDF (`5795e5d`) → Wave View I transition chart (`e057125`) → Wave Item 17 Factory Presentation Mode (`1db6cec`) → final gap audit (`655cee1`) → PRD §25 notebook + Item 19 + §28 demos (`f585b50`) → Cell 6 resumable training (`33c5dad`) → **OT Platform shell** |
+| **Full regression** | **765 passed, 0 xfailed** (OT Platform shell wave, 2026-09-06: 742 + the 23 tests of `tests/test_task6_ot_shell.py`). |
 | **xfails** | **None.** |
 | **Regression floor** | 428 (directive §4.7). Any drop halts the phase and is investigated — never "fixed" by editing a test. |
 
@@ -58,7 +61,10 @@ stops protecting any frozen test added later, and renames would masquerade as di
 `test_task6_process_view.py` *(Wave CDF — one module for all three screens)* ·
 `test_task6_notebook.py` *(PRD §25 notebook wave — static structural contracts on the .ipynb)* ·
 `test_task6_cell6_resume.py` *(Cell 6 resume wave — reuse-vs-retrain behaviour of
-`src/notebook_support.resumable_training`)*
+`src/notebook_support.resumable_training`)* ·
+`test_task6_ot_shell.py` *(OT Platform shell wave — the consolidated bilingual management
+document: tabs, renderer reuse, EN/FA switching, self-containedness, determinism, honesty,
+no fabricated alerts)*
 
 Plus the stored fixtures the suite owns: `tests/golden/view_j_normal.html` *(Wave View J
 closeout)*, `tests/golden/view_h_normal.html` *(Wave View H)*, `tests/golden/view_a_normal.html`
@@ -105,6 +111,8 @@ transition chart — the docs backlog from
 | **View J golden file** | **DONE — regenerated** (Wave View J closeout; regenerated in the horizon wave) | `tests/golden/view_j_normal.html` — the renderer's whole output for the fixed stub payload, compared byte-for-byte (newline-normalised) by 2 tests in `test_task6_optimization_view.py`. The horizon wave changed the renderer by design and regenerated the fixture with the recorded command (never hand-edited). View I gained its own golden in Wave View I (`tests/golden/view_i_normal.html`). |
 | **Task #6 overall status (updated by the Cell 6 resume wave, 2026-09-05)** | **Task #6 as originally scoped (A–J renderers + honesty + payload layer) COMPLETE; the PRD §25 notebook, its §28 demo cells and per-dataset resumable training are built** | Full matrix in `TASK6_FINAL_GAP_AUDIT_REPORT.md`: AC-1…AC-24 verified; 6/10 PRD §17 views + §29 overlay implemented (views 6/8/9/10 unlettered, backend work); §28 demos are now single cells in the §25 notebook **and** remain runnable via CLI; stability metrics are honest backend gaps. Notebook cell 6 is now resumable at the dataset level with Google Drive persistence (see `CELL6_RESUME_REPORT.md`); real Colab/Drive execution remains unverified from this environment. Recommended next wave: PRD §17 views 8/9 (Model Performance, Data Quality — both backend-then-renderer work) or the FR-10 inject mechanism, which the audit and the notebook both flag. |
 | **Notebook cell 6 resumability** | **DONE** (Cell 6 resume wave, 2026-09-05) | `src/notebook_support.resumable_training` gives PRD §25 cell 6 one checkpoint boundary per dataset (kiln, mill — the accepted scope boundary), a JSON manifest keyed on the PRD 13.4 dataset hash + an `ml.yaml` content digest, artifact-present validation, atomic (write-then-rename) persistence, and Google Drive storage on Colab (Runtime-local fallback, stated honestly). Zero frozen-layer changes — it calls the public `train_model_a`/`train_model_b`/`register_result`/`write_registry` that `train_all` itself calls. 11 tests + a real local controlled execution (fresh / interrupted / resumed, identical `training_summary`); **not** verified on Colab itself. Known gaps: finer-than-dataset granularity is P2 (needs a frozen-layer exception to hook `ModelATrainer`), and the first real Colab run should confirm the Drive mount flow. See `CELL6_RESUME_REPORT.md`. |
+| **Cement Plant OT Platform shell** | **DONE** (OT Platform shell wave, 2026-09-06) | One consolidated, bilingual (EN/FA), self-contained, management-facing HTML artifact — `reports/cement_plant_ot_platform.html`, built by `python app.py --view OT` (or notebook cell 12). Ten tabs (Guide / Overview A / Kiln B+C / Mill E+F / Energy G / AI Prediction H / AI Optimization J / What-if I / Alerts / Presentation P) embedding the existing renderers **byte-for-byte**: `app.build_document`'s duck-typed dispatch was extracted into the shared `app.build_view_section` and injected into `src/visualization/ot_shell.py` (new, presentation only — zero frozen-layer changes, no renderer, model or threshold touched). Language switch is CSS state on `<html lang dir>` + `.ot-en`/`.ot-fa` visibility (no reload, no-JS fallback); technical panels stay English/LTR inside `dir="ltr"`-pinned `.ot-tech` blocks, stated honestly in both languages. The Alerts tab is **aggregation only** — four traceable cards (view A's anomaly status, view J's optimizer payload incl. refusals, the frame's regime label, per-screen header notices), no invented score/index. P is reused as the Presentation tab — no second AI-status system. Branding ("Cement Plant OT Platform") is display-level only; nothing renamed in code or docs. 23 tests (`test_task6_ot_shell.py`). Browser automation unavailable — validated statically + `node --check` on the inline script; stated honestly in `OT_PLATFORM_SHELL_REPORT.md` §11. Known gaps: technical panels untranslated by design (separate future wave); Persian webfonts not embedded (self-containedness). |
+| **Cell 3 startup energy-balance residual (recorded, not investigated)** | **Open — read-only conservation review, future wave** | Notebook Cell 3's diagnostics show a high raw `energy_balance_residual_pct` peak during the plant's startup transition (`src/process_models/plant.py:152`, `residuals["energy_pct"]`). Recorded by the OT Platform shell wave per instruction — **no analysis, change or fix was made**; inspect whether the startup transient's raw residual peak is expected conservation-accounting behaviour or warrants attention. See `OT_PLATFORM_SHELL_REPORT.md` §13. |
 
 ---
 
