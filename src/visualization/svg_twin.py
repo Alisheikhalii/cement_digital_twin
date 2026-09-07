@@ -42,7 +42,7 @@ from src.digital_twin import layout
 from src.digital_twin.payloads import EquipmentStatus, StateSnapshot
 from src.digital_twin.provenance import Status, Value
 from src.digital_twin.settings import AnimationSettings, DashboardSettings, FormatSettings
-from src.visualization import theme
+from src.visualization import i18n, theme
 
 # =============================================================================
 # Geometry - the shape of the diagram (a design-token concern; see the module
@@ -435,13 +435,22 @@ def _glyph_svg(
     reading = theme.value_text(status.driver, fmt) if status.driver is not None else theme.NO_VALUE_TEXT
     label_y = center.y + GLYPH_R + LABEL_DY
     sub_y = center.y + GLYPH_R + SUB_DY
+    # Bilingual label/sub (tspan pairs switched by the same <html dir> CSS the panels use)
+    # with playback anchors: the state word on ``e:{name}``, the live driver reading on
+    # ``v:{tag}`` — the same key the process screens' readout rows carry.
+    reading_html = (
+        f'<tspan data-otk="{i18n.value_key(status.driver.tag)}">{theme.html(reading)}</tspan>'
+        if status.driver is not None
+        else theme.html(reading)
+    )
     parts.append(
         f'<text class="dt-glyph-name" x="{center.x:.1f}" y="{label_y:.1f}" '
-        f'text-anchor="middle">{theme.html(spec.title)}</text>'
+        f'text-anchor="middle">{i18n.title_bi(spec.title, tag="tspan")}</text>'
     )
     parts.append(
         f'<text class="dt-glyph-sub" x="{center.x:.1f}" y="{sub_y:.1f}" '
-        f'text-anchor="middle">{theme.html(status.state)} · {theme.html(reading)}</text>'
+        f'text-anchor="middle"><tspan data-otk="{i18n.equipment_state_key(status.name)}">'
+        f'{i18n.state_bi(status.state, tag="tspan")}</tspan> · {reading_html}</text>'
     )
     parts.append("</g>")
     return "".join(parts)
@@ -464,11 +473,11 @@ def _terminal_svg(name: str, palette: theme.Palette) -> str:
 
 
 def _legend_html(palette: theme.Palette) -> str:
-    """A compact swatch legend for the stream kinds."""
+    """A compact swatch legend for the stream kinds, bilingual."""
     chips = "".join(
         f'<span class="dt-twin__legend-item">'
         f'<span class="dt-twin__swatch" style="background:{getattr(palette, token)}"></span>'
-        f"{theme.html(_KIND_TITLE[kind])}</span>"
+        f"{i18n.title_bi(_KIND_TITLE[kind])}</span>"
         for kind, token in _KIND_TOKEN.items()
     )
     return f'<div class="dt-twin__legend">{chips}</div>'
@@ -544,7 +553,7 @@ def _header_html(snapshot: StateSnapshot, title: str | None, *, synthetic: bool)
         f'<div class="dt-twin__meta">'
         f'<span class="dt-badge dt-badge--configuration">{badge}</span>'
         f'<span class="dt-badge dt-badge--observed">{provenance}</span>'
-        f'<span class="dt-mono dt-muted">{stamp}</span>'
+        f'<span class="dt-mono dt-muted"><bdi data-otk="{i18n.STAMP_KEY}">{stamp}</bdi></span>'
         f"</div></div>"
     )
 

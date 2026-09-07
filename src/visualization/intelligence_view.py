@@ -39,7 +39,7 @@ from typing import Any, Final
 
 from src import labels
 from src.digital_twin.provenance import Provenance, Value
-from src.visualization import theme
+from src.visualization import i18n, theme
 
 #: What a cell that could not be predicted shows, followed by a reason. Same wording as view J's
 #: renderer so the two horizon grids state absence the same way. Not a PRD-quoted string, so it
@@ -91,8 +91,10 @@ def _badge(text: object, kind: str) -> str:
     return f'<span class="dt-badge dt-badge--{kind}">{theme.html(text)}</span>'
 
 
-def _pill(text: object, kind: str) -> str:
-    return f'<span class="dt-pill dt-pill--{kind}">{theme.html(text)}</span>'
+def _pill(text: object, kind: str, *, key: str | None = None) -> str:
+    """A status pill, optionally carrying a playback anchor (``data-otk``)."""
+    anchor = f' data-otk="{theme.html(key)}"' if key else ""
+    return f'<span class="dt-pill dt-pill--{kind}"{anchor}>{text}</span>'
 
 
 # =============================================================================
@@ -110,21 +112,25 @@ def _unavailable_panel(reason: str) -> str:
 # =============================================================================
 # Item 10 — Model A's forecast grid (OBSERVED current, PREDICTION horizons)
 # =============================================================================
-def _predicted_cell(value: Value, fmt: Any) -> str:
+def _predicted_cell(value: Value, fmt: Any, *, target: str, minutes: int) -> str:
     """One forecast with its spread — the payload's own numbers, never a percentage.
 
     The ``±`` figure is ``uncertainty`` as Model A reported it (the ensemble spread, PRD
     13.1.1). A forecast without one shows the value alone; no confidence is derived in either
-    case.
+    case. Both the number and the spread carry playback anchors
+    (:func:`i18n.prediction_value_key` / :func:`i18n.prediction_spread_key`).
     """
     number = theme.format_number(value.value, fmt)
     spread = theme.format_number(value.uncertainty, fmt)
     spread_html = (
-        f' <span class="dt-muted">&plusmn; {spread}</span>'
+        f' <span class="dt-muted" data-otk="{i18n.prediction_spread_key(target, minutes)}">&plusmn; {spread}</span>'
         if value.uncertainty is not None and spread != theme.NO_VALUE_TEXT
         else ""
     )
-    return f'<td class="dt-num">{number}{spread_html}</td>'
+    return (
+        f'<td class="dt-num"><bdi data-otk="{i18n.prediction_value_key(target, minutes)}">'
+        f"{number}</bdi>{spread_html}</td>"
+    )
 
 
 def _missing_pairs(missing: tuple[str, ...]) -> frozenset[tuple[str, int]]:
@@ -166,7 +172,7 @@ def _prediction_grid(predictions: Any, rows: tuple[Any, ...], fmt: Any) -> str:
         | {minutes for _, minutes in _missing_pairs(predictions.missing)}
     )
     missing = _missing_pairs(predictions.missing)
-    head = "".join(f"<th>t+{int(minutes)}</th>" for minutes in horizons)
+    head = "".join(f'<th class="dt-mono">t+{int(minutes)}</th>' for minutes in horizons)
     body_rows = []
     covered: set[str] = set()
     for row in rows:
@@ -192,16 +198,16 @@ def _prediction_grid(predictions: Any, rows: tuple[Any, ...], fmt: Any) -> str:
                     else MISSING_ENTRY_TEXT
                 )
                 cells.append(
-                    f'<td class="dt-muted">{theme.html(UNAVAILABLE_TEXT)} — '
-                    f"{theme.html(reason)}</td>"
+                    f'<td class="dt-muted">{i18n.title_bi(UNAVAILABLE_TEXT)} — '
+                    f"{i18n.title_bi(reason)}</td>"
                 )
             else:
-                cells.append(_predicted_cell(forecast, fmt))
+                cells.append(_predicted_cell(forecast, fmt, target=str(row.target), minutes=minutes))
         body_rows.append(f"<tr>{title_cell}{current_cell}{''.join(cells)}</tr>")
     for target in sorted({name for name, _ in missing if name not in covered}):
         cells = "".join(
-            f'<td class="dt-muted">{theme.html(UNAVAILABLE_TEXT)} — '
-            f"{theme.html(MISSING_MODEL_TEXT)}</td>"
+            f'<td class="dt-muted">{i18n.title_bi(UNAVAILABLE_TEXT)} — '
+            f"{i18n.title_bi(MISSING_MODEL_TEXT)}</td>"
             for _ in horizons
         )
         body_rows.append(
@@ -209,7 +215,8 @@ def _prediction_grid(predictions: Any, rows: tuple[Any, ...], fmt: Any) -> str:
             f'<td class="dt-num">{theme.NO_VALUE_TEXT}</td>{cells}</tr>'
         )
     return (
-        '<table class="dt-table"><thead><tr><th>Target</th><th>Current</th>'
+        '<table class="dt-table"><thead><tr>'
+        f'<th>{i18n.title_bi("Target")}</th><th>{i18n.title_bi("Current")}</th>'
         f"{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
     )
 
@@ -228,35 +235,31 @@ def _prediction_section(predictions: Any, rows: tuple[Any, ...], fmt: Any) -> st
     if not rows:
         return (
             '<div class="dt-card" data-role="predictions">'
-            '<h3 class="dt-title">Model A prediction</h3>'
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this prediction payload '
-            "carries no forecasts. No predicted values are shown rather than substituted "
-            "ones.</p></div>"
+            f'<h3 class="dt-title">{i18n.title_bi("Model A prediction")}</h3>'
+            '<p class="dt-muted">'
+            f'{i18n.title_bi("unavailable: this prediction payload carries no forecasts. No predicted values are shown rather than substituted ones.")}'
+            "</p></div>"
         )
     missing_note = (
-        f'<p class="dt-muted">Missing models: {theme.html(", ".join(predictions.missing))}.</p>'
+        f'<p class="dt-muted">{i18n.title_bi("Missing models:")} '
+        f'<bdi>{theme.html(", ".join(predictions.missing))}</bdi>.</p>'
         if predictions.missing
         else ""
     )
     version_note = (
-        f'<p class="dt-mono dt-muted">Model version: {theme.html(predictions.model_version)}'
-        "</p>"
+        f'<p class="dt-mono dt-muted">{i18n.title_bi("Model version:")} '
+        f"<bdi>{theme.html(predictions.model_version)}</bdi></p>"
         if predictions.model_version
         else ""
     )
     return (
         '<div class="dt-card" data-role="predictions">'
-        '<h3 class="dt-title">Model A prediction '
+        f'<h3 class="dt-title">{i18n.title_bi("Model A prediction")} '
         f"{_badge(theme.provenance_label(Provenance.PREDICTION), theme.provenance_slug(Provenance.PREDICTION))}"
         "</h3>"
         f"{_prediction_grid(predictions, rows, fmt)}"
         f"{missing_note}{version_note}"
-        '<p class="dt-muted">The <em>Current</em> column is the '
-        f"{_badge(theme.provenance_label(Provenance.OBSERVED), theme.provenance_slug(Provenance.OBSERVED))}"
-        " value of each target; every other column is Model A's forecast of it "
-        f"({theme.html(theme.provenance_label(Provenance.PREDICTION))}). The &plusmn; figure "
-        "is the model's own ensemble spread (PRD 13.1.1), shown as a spread and never as a "
-        "percentage.</p></div>"
+        f'<p class="dt-muted">{i18n.prediction_grid_note()}</p></div>'
     )
 
 
@@ -299,8 +302,9 @@ def _nearest_regime_note(anomaly: Any) -> str:
         f", cosine {float(similarity):+.3f}" if similarity is not None and similarity == similarity else ""
     )
     return (
-        '<p class="dt-muted">Nearest regime signature (similarity match, not a cause): '
-        f"{theme.html(anomaly.nearest_regime)}{theme.html(similarity_text)}</p>"
+        '<p class="dt-muted">'
+        f'{i18n.title_bi("Nearest regime signature (similarity match, not a cause): ")}'
+        f"<bdi>{theme.html(anomaly.nearest_regime)}{theme.html(similarity_text)}</bdi></p>"
     )
 
 
@@ -315,34 +319,37 @@ def _anomaly_card(anomaly: Any, fmt: Any) -> str:
     """
     status = str(anomaly.status)
     pills = [
-        _pill(status, _STATUS_PILL.get(status, "unknown")),
+        _pill(i18n.status_bi(status), _STATUS_PILL.get(status, "unknown"), key=i18n.anomaly_status_key()),
         _badge(theme.provenance_label(anomaly.provenance), theme.provenance_slug(anomaly.provenance)),
     ]
     if anomaly.out_of_distribution:
-        pills.append(_pill("out of distribution", "alarm"))
+        pills.append(_pill(i18n.title_bi("out of distribution"), "alarm"))
     score_line = (
-        f'<p class="dt-mono dt-muted">Anomaly score: {_num(anomaly.score, fmt)}</p>'
+        f'<p class="dt-mono dt-muted">{i18n.title_bi("Anomaly score:")} '
+        f'<bdi data-otk="{i18n.anomaly_score_key()}">{_num(anomaly.score, fmt)}</bdi></p>'
         if anomaly.score is not None
         else ""
     )
     if not anomaly.is_anomaly:
         return (
             '<div class="dt-card" data-role="anomaly">'
-            '<h3 class="dt-title">Anomaly detection</h3>'
+            f'<h3 class="dt-title">{i18n.title_bi("Anomaly detection")}</h3>'
             f'<div class="dt-int__badges">{"".join(pills)}</div>'
-            f"<p>{theme.html(NO_ANOMALY_TEXT)}</p>"
+            f"<p>{i18n.title_bi(NO_ANOMALY_TEXT)}</p>"
             f"{score_line}{_nearest_regime_note(anomaly)}"
             "</div>"
         )
     return (
         '<div class="dt-card" data-role="anomaly">'
-        '<h3 class="dt-title">Anomaly detection</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Anomaly detection")}</h3>'
         f'<div class="dt-int__badges">{"".join(pills)}</div>'
-        f'<div class="dt-banner dt-banner--alarm">{theme.html("WARNING")}</div>'
-        f'<p><strong>Detected anomaly:</strong> {theme.html(anomaly.display_cause)}</p>'
+        f'<div class="dt-banner dt-banner--alarm">{i18n.title_bi("WARNING")}</div>'
+        f'<p><strong>{i18n.title_bi("Detected anomaly:")}</strong> '
+        f'<bdi data-otk="{i18n.anomaly_detail_key()}">{theme.html(anomaly.display_cause)}</bdi></p>'
         f"<p><strong>{theme.html(anomaly.hypothesis_label)}:</strong> "
         f"{theme.html(anomaly.hypothesis)}</p>"
-        f"<p><strong>Affected variables:</strong> {theme.html(_variables_text(anomaly.affected_variables))}</p>"
+        f'<p><strong>{i18n.title_bi("Affected variables:")}</strong> '
+        f"<bdi>{theme.html(_variables_text(anomaly.affected_variables))}</bdi></p>"
         f"<p><strong>{theme.html(anomaly.action_label)}:</strong> "
         f"{theme.html(anomaly.suggested_action)}</p>"
         f"{score_line}{_nearest_regime_note(anomaly)}"
@@ -376,10 +383,8 @@ def render_intelligence(model: Any, *, settings: Any, theme_name: str = theme.DA
     anomaly = model.anomaly
     fmt = settings.format
     stamp = f"{getattr(model, 'dataset', '')} · {predictions.timestamp or model.anomaly.timestamp}"
-    badges = [
-        _badge(labels.SIMULATED_RESULT_LABEL, "configuration"),
-        _badge(labels.NOT_VALIDATED_LABEL, "configuration"),
-    ]
+    # The model-output wording lives once per document (the shell's global disclosure); this
+    # screen's own banner below carries the standing no-plant-connection statement.
     cards = [
         _prediction_section(predictions, tuple(model.rows), fmt),
         _anomaly_section(anomaly, fmt),
@@ -388,8 +393,8 @@ def render_intelligence(model: Any, *, settings: Any, theme_name: str = theme.DA
         f'<div class="{theme.theme_class(theme_name)}">'
         f"{_panel_style()}"
         '<div class="dt-int">'
-        f'<div class="dt-int__badges">{"".join(badges)}'
-        f'<span class="dt-mono dt-muted">{theme.html(stamp)}</span></div>'
+        f'<div class="dt-int__badges">'
+        f'<span class="dt-mono dt-muted"><bdi data-otk="{i18n.STAMP_KEY}">{theme.html(stamp)}</bdi></span></div>'
         f"{''.join(cards)}"
         f'<div class="dt-banner">{theme.html(labels.NO_PLANT_CONNECTION_STATEMENT)}</div>'
         "</div></div>"

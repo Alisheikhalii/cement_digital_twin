@@ -235,7 +235,8 @@ def test_the_five_stages_render_in_process_order(settings: DashboardSettings) ->
     """Item 3: Quarry/feed -> kiln -> clinker -> mill -> product, joined by arrows."""
     html = overview_view.render_overview(_model(), settings=settings)
     titles = ["Quarry / feed", "Kiln system", "Clinker", "Cement mill", "Cement product"]
-    positions = [html.index(f">{title}</h3>") for title in titles]
+    # The Executive Demo wave renders titles bilingual; the English span keeps the words.
+    positions = [html.index(f">{title}</span>") for title in titles]
     assert positions == sorted(positions)
     assert html.count('<span class="dt-ov__arrow">&rarr;</span>') == 4
 
@@ -245,7 +246,8 @@ def test_stage_cards_carry_their_own_state_rate_and_equipment(
 ) -> None:
     """The state pill is the payload's word; the rate is its own Value; equipment states show."""
     html = overview_view.render_overview(_model(), settings=settings)
-    assert 'class="dt-pill dt-pill--ok">RUNNING' in html
+    # Bilingual stage titles / state pills: the English span keeps the payload's own words.
+    assert ">RUNNING</span>" in html
     assert "182.5" in html  # the feed stage's own rate, at FormatSettings precision
     assert "Preheater" in html
     assert "RotaryKiln" in html
@@ -373,7 +375,8 @@ def test_an_unknown_stage_state_gets_the_honest_grey(settings: DashboardSettings
         *_stages()[2:],
     )
     html = overview_view.render_overview(_model(stages=stages), settings=settings)
-    assert 'class="dt-pill dt-pill--unknown">UNKNOWN' in html
+    # Bilingual state pill: the English span keeps the payload's own word.
+    assert 'dt-pill--unknown" data-otk="g:kiln_system"><span class="dt-en" dir="ltr">UNKNOWN</span>' in html
 
 
 def test_an_empty_plant_group_is_stated_not_papered_over(settings: DashboardSettings) -> None:
@@ -435,7 +438,9 @@ def test_view_a_routes_to_the_renderer_in_build_document(
     settings: DashboardSettings,
 ) -> None:
     html, timings = app.build_document(StubState({"A": _model()}), ("A",), settings=settings)
-    assert "A — Plant Overview" in html
+    # The heading renders the view id inside a <span class="dt-mono"> wrapper and the title as
+    # a bilingual pair (the OT wave added both), so the needle keeps its property with wrappers.
+    assert '>A</span> — <span class="dt-en" dir="ltr">Plant Overview</span>' in html
     assert 'data-role="chain"' in html
     assert "no renderer for this screen yet" not in html  # not the payload fallback
     assert list(timings) == ["A"]

@@ -298,7 +298,8 @@ def test_the_five_kpi_cards_render_in_the_prds_order(settings: DashboardSettings
         presentation_view.CARD_QUALITY,
         presentation_view.CARD_ANOMALIES,
     ]
-    positions = [html.index(f">{title}</h3>") for title in titles]
+    # The Executive Demo wave renders the headings bilingual; the English span keeps the title.
+    positions = [html.index(f">{title}</span>") for title in titles]
     assert positions == sorted(positions)
     assert html.count('data-role="kpi-card"') == 5
 
@@ -313,7 +314,7 @@ def test_the_five_chain_stages_render_in_the_prds_order(settings: DashboardSetti
         presentation_view.CHAIN_ACTION,
         presentation_view.CHAIN_BENEFIT,
     ]
-    positions = [html.index(f">{title}</h3>") for title in titles]
+    positions = [html.index(f">{title}</span>") for title in titles]
     assert positions == sorted(positions)
     assert html.count('<span class="dt-pres__arrow">&rarr;</span>') == 4
 
@@ -390,7 +391,8 @@ def test_the_chain_reads_the_payloads_own_fields(settings: DashboardSettings) ->
     assert "separator_speed_rpm -2.20 %" in html
     assert labels.SIMULATED_SAVING_CAVEAT in html
     assert "MEDIUM" in html  # the categorical quality pill, never a percentage
-    assert "2 plant values" in html  # Model A's grid: 2 targets over t+5min … t+10min
+    # Bilingual: "2" and "plant values" sit in separate nodes now; both remain present.
+    assert ">plant values</span>" in html  # Model A's grid: 2 targets over t+5min … t+10min
     assert _MESSAGE in html  # the optimizer's own headline, in its own words
 
 
@@ -491,7 +493,7 @@ def test_a_refused_run_is_a_display_state(settings: DashboardSettings) -> None:
         presentation_view.CHAIN_ACTION,
         presentation_view.CHAIN_BENEFIT,
     ):
-        chunk = html.split(f">{stage_title}</h3>")[1]
+        chunk = html.split(f">{stage_title}</span>")[1]
         assert presentation_view.UNAVAILABLE_TEXT in chunk.split('data-role="chain-stage"')[0]
 
 

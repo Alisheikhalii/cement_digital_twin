@@ -154,16 +154,18 @@ def _panel(document: str, tab_key: str) -> str:
 
 def test_b_each_tab_carries_its_audited_views(document: str) -> None:
     """The Kiln tab embeds both B and C; the Mill tab both E and F — never only one."""
+    # The Executive Demo wave renders the heading id inside a <span class="dt-mono"> followed
+    # by the bilingual title pair, so the id needle keeps its property but gains the wrapper.
     for view_id in ("B", "C"):
-        assert f">{view_id} — " in _panel(document, "kiln"), f"view {view_id} missing from the Kiln tab"
+        assert f">{view_id}</span> — " in _panel(document, "kiln"), f"view {view_id} missing from the Kiln tab"
     for view_id in ("E", "F"):
-        assert f">{view_id} — " in _panel(document, "mill"), f"view {view_id} missing from the Mill tab"
-    assert ">A — " in _panel(document, "overview")
-    assert ">G — " in _panel(document, "energy")
-    assert ">H — " in _panel(document, "prediction")
-    assert ">J — " in _panel(document, "optimization")
-    assert ">I — " in _panel(document, "whatif")
-    assert ">P — " in _panel(document, "presentation")
+        assert f">{view_id}</span> — " in _panel(document, "mill"), f"view {view_id} missing from the Mill tab"
+    assert ">A</span> — " in _panel(document, "overview")
+    assert ">G</span> — " in _panel(document, "energy")
+    assert ">H</span> — " in _panel(document, "prediction")
+    assert ">J</span> — " in _panel(document, "optimization")
+    assert ">I</span> — " in _panel(document, "whatif")
+    assert ">P</span> — " in _panel(document, "presentation")
     # the guide and alerts tabs carry no renderer section at all
     assert "dt-app" not in _panel(document, "guide")
     assert "dt-app" not in _panel(document, "alerts")
@@ -238,9 +240,13 @@ def test_f_the_switch_is_css_state_not_a_second_copy(
     wrapped = app._PresentationRequest(state)
     _, section_b = app.build_view_section(wrapped, "B", settings=settings)
     assert document.count(section_b) == 1, "the technical panels must not be duplicated per language"
-    # the switch script addresses only the shell's own classes — never a panel
+    # the switch script addresses only the shell's own classes — never a panel. The playback
+    # patcher necessarily selects the panels' language children (".dt-en,.dt-fa") to write the
+    # timeline's bilingual patches and swaps a pill's "dt-pill--" class prefix, so those two
+    # selector fragments are the script's only "dt-" text; no other panel class is addressed.
     script = document.split("<script>", 1)[1]
-    assert "ot-tech" not in script and "dt-" not in script
+    assert "ot-tech" not in script
+    assert set(re.findall(r"dt-[a-z-]+", script)) == {"dt-en", "dt-fa", "dt-pill--"}
 
 
 def test_f_the_technical_panels_stay_ltr(document: str) -> None:

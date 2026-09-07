@@ -40,7 +40,7 @@ from typing import Any, Final
 
 from src import labels
 from src.digital_twin.provenance import Provenance
-from src.visualization import theme
+from src.visualization import i18n, theme
 
 #: What a panel that could not be filled shows, followed by the payload's own reason. The
 #: renderer's own word (not PRD-quoted), kept out of :mod:`src.labels` for the same reason the
@@ -179,7 +179,7 @@ def _status_strip(view: Any) -> str:
     stamp = f"{view.mode} · {view.timestamp}"
     return (
         f'<div class="dt-wi__badges">{"".join(pills)}'
-        f'<span class="dt-mono dt-muted">{theme.html(stamp)}</span></div>'
+        f'<span class="dt-mono dt-muted"><bdi data-otk="{i18n.STAMP_KEY}">{theme.html(stamp)}</bdi></span></div>'
     )
 
 
@@ -217,7 +217,7 @@ def _slider_card(slider: Mapping[str, Any], fmt: Any) -> str:
     mode = str(slider.get("mode", ""))
     low, high = _slider_bounds(slider)
     rows = "".join(
-        f'<tr><th>{theme.html(label)}</th><td class="dt-num">{cell}</td></tr>'
+        f'<tr><th>{i18n.title_bi(label)}</th><td class="dt-num">{cell}</td></tr>'
         for label, cell in (
             ("Current", _num(slider.get("current"), fmt)),
             ("Minimum", _num(low, fmt)),
@@ -246,21 +246,20 @@ def _sliders_section(sliders: tuple[Mapping[str, Any], ...], fmt: Any) -> str:
     if not sliders:
         return (
             '<div class="dt-card" data-role="whatif-sliders">'
-            f'<h3 class="dt-title">Manipulated variables (PRD 16.1)</h3>'
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this provider carries no '
-            "slider specifications. No bounds or steps are shown rather than invented ones.</p>"
+            f'<h3 class="dt-title">{i18n.title_bi("Manipulated variables (PRD 16.1)")}</h3>'
+            '<p class="dt-muted">'
+            f'{i18n.title_bi("unavailable: this provider carries no slider specifications. No bounds or steps are shown rather than invented ones.")}'
+            "</p>"
             "</div>"
         )
     cards = "".join(_slider_card(slider, fmt) for slider in sliders)
     return (
         '<div class="dt-card" data-role="whatif-sliders">'
-        '<h3 class="dt-title">Manipulated variables (PRD 16.1)</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Manipulated variables (PRD 16.1)")}</h3>'
         '<div class="dt-wi__sliders">'
         + cards
         + "</div>"
-        '<p class="dt-muted">Bounds, step and the mode&rsquo;s change limit are the '
-        "engine&rsquo;s own configured numbers; a request is set in the engine&rsquo;s steps, "
-        "never in a step of this screen&rsquo;s.</p></div>"
+        f'<p class="dt-muted">{i18n.title_bi("Bounds, step and the mode\'s change limit are the engine\'s own configured numbers; a request is set in the engine\'s steps, never in a step of this screen\'s.")}</p></div>'
     )
 
 
@@ -307,9 +306,12 @@ def _requested_change_table(requested: tuple[Mapping[str, Any], ...], fmt: Any) 
     if not rows:
         return ""
     return (
-        '<table class="dt-table"><thead><tr><th>Variable</th><th>Baseline</th>'
-        "<th>Requested</th><th>Simulated</th><th>&Delta;&nbsp;%</th><th>Mode bounds</th>"
-        "<th>Step</th><th>Flags</th></tr></thead>"
+        '<table class="dt-table"><thead><tr>'
+        f'<th>{i18n.title_bi("Variable")}</th><th>{i18n.title_bi("Baseline")}</th>'
+        f'<th>{i18n.title_bi("Requested")}</th><th>{i18n.title_bi("Simulated")}</th>'
+        "<th>&Delta;&nbsp;%</th>"
+        f'<th>{i18n.title_bi("Mode bounds")}</th><th>{i18n.title_bi("Step")}</th>'
+        f'<th>{i18n.title_bi("Flags")}</th></tr></thead>'
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
@@ -324,7 +326,7 @@ def _change_section(view: Any, fmt: Any) -> str:
     )
     return (
         '<div class="dt-card" data-role="whatif-change">'
-        '<h3 class="dt-title">Requested change</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Requested change")}</h3>'
         f'<p class="dt-mono">{theme.html(view.action)}</p>'
         f"{table}"
         + (f'<ul>{notes}</ul>' if notes else "")
@@ -348,13 +350,14 @@ def _before_after_table(panel: Mapping[str, Any], fmt: Any) -> str:
         )
     if not rows:
         return (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this panel carries no '
-            "before/after rows. No comparison numbers are shown rather than substituted "
-            "ones.</p>"
+            '<p class="dt-muted">'
+            f'{i18n.title_bi("unavailable: this panel carries no before/after rows. No comparison numbers are shown rather than substituted ones.")}'
+            "</p>"
         )
     return (
-        '<table class="dt-table"><thead><tr><th>Metric</th><th>Baseline</th>'
-        "<th>Scenario</th><th>&Delta;</th><th>&Delta;&nbsp;%</th></tr></thead>"
+        '<table class="dt-table"><thead><tr>'
+        f'<th>{i18n.title_bi("Metric")}</th><th>{i18n.title_bi("Baseline")}</th>'
+        f'<th>{i18n.title_bi("Scenario")}</th><th>&Delta;</th><th>&Delta;&nbsp;%</th></tr></thead>'
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
@@ -381,12 +384,14 @@ def _settled_table(settled: Mapping[str, Any], fmt: Any) -> str:
         )
     if not rows:
         return (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: the panel carries no settled '
-            "state. No predicted values are shown rather than substituted ones.</p>"
+            '<p class="dt-muted">'
+            f'{i18n.title_bi("unavailable: the panel carries no settled state. No predicted values are shown rather than substituted ones.")}'
+            "</p>"
         )
     return (
-        '<table class="dt-table"><thead><tr><th>Tag</th><th>Settled value</th>'
-        f"<th>Unit</th></tr></thead><tbody>{rows}</tbody></table>"
+        '<table class="dt-table"><thead><tr>'
+        f'<th>{i18n.title_bi("Tag")}</th><th>{i18n.title_bi("Settled value")}</th>'
+        f'<th>{i18n.title_bi("Unit")}</th></tr></thead><tbody>{rows}</tbody></table>'
     )
 
 
@@ -457,16 +462,16 @@ def _response_section(view: Any, fmt: Any) -> str:
 
     return (
         '<div class="dt-card" data-role="whatif-response">'
-        '<h3 class="dt-title">Predicted response '
+        f'<h3 class="dt-title">{i18n.title_bi("Predicted response")} '
         + _badge(
             theme.provenance_label(Provenance.PREDICTION),
             theme.provenance_slug(Provenance.PREDICTION),
         )
         + "</h3>"
-        '<h4 class="dt-title">Before / after (settled state vs baseline)</h4>'
+        f'<h4 class="dt-title">{i18n.title_bi("Before / after (settled state vs baseline)")}</h4>'
         f"{_before_after_table(panel, fmt)}"
         f"{_settled_table(settled, fmt)}"
-        '<h4 class="dt-title">Transition (PRD 16.2 — the delay is in the trajectory)</h4>'
+        f'<h4 class="dt-title">{i18n.title_bi("Transition (PRD 16.2 — the delay is in the trajectory)")}</h4>'
         f"{transition_html}"
         f"{agreement_html}"
         f"{savings_html}"
@@ -684,10 +689,10 @@ def _constraints_section(view: Any, fmt: Any) -> str:
     if not constraint_rows and not envelope_rows:
         return (
             '<div class="dt-card" data-role="whatif-constraints">'
-            '<h3 class="dt-title">Constraints &amp; envelope checks</h3>'
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this panel carries no '
-            "constraint or envelope rows. No constraint is shown as satisfied rather than "
-            "substituted ones.</p></div>"
+            f'<h3 class="dt-title">{i18n.title_bi("Constraints & envelope checks")}</h3>'
+            '<p class="dt-muted">'
+            f'{i18n.title_bi("unavailable: this panel carries no constraint or envelope rows. No constraint is shown as satisfied rather than substituted ones.")}'
+            "</p></div>"
         )
 
     def _state_pill(state: object) -> str:
@@ -706,8 +711,10 @@ def _constraints_section(view: Any, fmt: Any) -> str:
             for row in constraint_rows
         )
         rows_html.append(
-            '<table class="dt-table"><thead><tr><th>Constraint</th><th>State</th>'
-            "<th>Value</th><th>Limit</th><th>Detail</th></tr></thead>"
+            '<table class="dt-table"><thead><tr>'
+            f'<th>{i18n.title_bi("Constraint")}</th><th>{i18n.title_bi("State")}</th>'
+            f'<th>{i18n.title_bi("Value")}</th><th>{i18n.title_bi("Limit")}</th>'
+            f'<th>{i18n.title_bi("Detail")}</th></tr></thead>'
             f"<tbody>{body}</tbody></table>"
         )
     if envelope_rows:
@@ -718,8 +725,9 @@ def _constraints_section(view: Any, fmt: Any) -> str:
             for row in envelope_rows
         )
         rows_html.append(
-            '<table class="dt-table"><thead><tr><th>Envelope check</th><th>State</th>'
-            "<th>Detail</th></tr></thead>"
+            '<table class="dt-table"><thead><tr>'
+            f'<th>{i18n.title_bi("Envelope check")}</th><th>{i18n.title_bi("State")}</th>'
+            f'<th>{i18n.title_bi("Detail")}</th></tr></thead>'
             f"<tbody>{body}</tbody></table>"
         )
     statuses = []
@@ -731,7 +739,7 @@ def _constraints_section(view: Any, fmt: Any) -> str:
         statuses.append(_pill(f"feature space: {panel.get('ood_status')}", "unknown"))
     return (
         '<div class="dt-card" data-role="whatif-constraints">'
-        '<h3 class="dt-title">Constraints &amp; envelope checks '
+        f'<h3 class="dt-title">{i18n.title_bi("Constraints & envelope checks")} '
         + "".join(statuses)
         + "</h3>"
         + "".join(rows_html)

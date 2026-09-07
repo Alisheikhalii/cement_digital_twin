@@ -52,7 +52,7 @@ from typing import Any, Final
 
 from src import labels
 from src.digital_twin.provenance import Provenance, Value
-from src.visualization import theme
+from src.visualization import i18n, theme
 
 #: What a card that has nothing to render shows. Same wording as the view A / G / H / I / J
 #: renderers, so all of them state absence the same way; the renderer's own word (not
@@ -72,19 +72,29 @@ _STATE_PILL: Final[dict[str, str]] = {
 
 
 def _panel_style() -> str:
-    """Scoped layout CSS for the panel. Geometry only — colours and type come from the theme."""
+    """Scoped layout CSS for the panel. Geometry only — colours and type come from the theme.
+
+    ``minmax(min(13em,100%),1fr)`` (the Executive Demo wave's global grid fix): the plain
+    ``minmax(13em,1fr)`` an explicit track minimum is a floor the browser honours even when
+    the card's table is wider than it, which let a readout table overflow its card and
+    displace the Status column into the neighbouring card. ``min(13em,100%)`` caps the floor
+    at the container width, and the wrapping rules in :func:`theme.stylesheet` let the table
+    itself shrink — the three-column structure stays stable at any card width.
+    """
     return (
         "<style>.dt-pr{display:flex;flex-direction:column;gap:var(--dt-gap);}"
         ".dt-pr__badges{display:flex;flex-wrap:wrap;gap:.4em;align-items:center;}"
         ".dt-pr__notices{margin:0;}"
-        ".dt-pr__kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(13em,1fr));"
+        ".dt-pr__kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(13em,100%),1fr));"
         "gap:var(--dt-gap);}"
         ".dt-pr__meta{display:flex;flex-wrap:wrap;gap:1em;align-items:baseline;}</style>"
     )
 
 
-def _pill(text: object, kind: str) -> str:
-    return f'<span class="dt-pill dt-pill--{kind}">{theme.html(text)}</span>'
+def _pill(text: object, kind: str, *, key: str | None = None) -> str:
+    """A status/state pill, optionally carrying a playback anchor (``data-otk``)."""
+    anchor = f' data-otk="{theme.html(key)}"' if key else ""
+    return f'<span class="dt-pill dt-pill--{kind}"{anchor}>{text}</span>'
 
 
 def _badge(text: object, kind: str) -> str:
@@ -99,20 +109,29 @@ def _provenance_badge(provenance: Provenance) -> str:
 # One readout row / one readout table — a payload Value, the payload's own everything
 # =============================================================================
 def _readout_row(value: Value, fmt: Any) -> str:
-    """One observed reading as a table row: its own title, number, status and source.
+    """One observed reading as a table row: its own title, number and status.
 
-    The row's label is the tag's own schema description (the wording ``value_from_tag`` read
-    from :mod:`src.schema`), with the tag itself beneath in muted mono so every number stays
-    traceable to its source (NFR-6). The status pill is the value's own banded status — this
-    renderer bands nothing. A missing number shows the absence glyph, never a zero.
+    The row's label is bilingual (the tag's own schema description, with the Persian entry
+    from :mod:`src.visualization.i18n`); beneath it the canonical tag itself as the secondary
+    technical reference — never renamed, ``<bdi>``-isolated, prefixed ``شناسه فنی:`` in
+    Persian mode — so every number stays traceable to its source (NFR-6). The status pill is
+    the value's own banded status — this renderer bands nothing. A missing number shows the
+    absence glyph, never a zero.
+
+    The ``data-otk`` anchors (value, status) are the playback keys the embedded timeline
+    patches at demo time; both are emitted by the shared key builders in
+    :mod:`src.visualization.i18n` so the renderer and the timeline extractor can never drift.
+    The per-row provenance badge the row once carried is gone by the Executive Demo wave's
+    instruction — the channel is stated once per screen (see :func:`render_process`), not
+    once per reading.
     """
-    title = value.description or value.tag
     return (
         "<tr>"
-        f'<td>{theme.html(title)}<br><span class="dt-mono dt-muted">{theme.html(value.tag)}</span></td>'
-        f'<td class="dt-num">{theme.html(theme.value_text(value, fmt))}</td>'
-        f"<td>{_pill(value.status, theme.status_slug(value.status))}"
-        f"{_provenance_badge(value.provenance)}</td>"
+        f'<td>{i18n.tag_title(value)}<br><span class="dt-mono dt-muted">{i18n.tag_ref(value.tag)}</span></td>'
+        f'<td class="dt-num"><bdi data-otk="{i18n.value_key(value.tag)}">'
+        f"{theme.html(theme.value_text(value, fmt))}</bdi></td>"
+        f'<td>{_pill(i18n.status_bi(value.status), theme.status_slug(value.status), key=i18n.status_key(value.tag))}'
+        "</td>"
         "</tr>"
     )
 
@@ -123,8 +142,11 @@ def _readout_table(values: tuple[Value, ...], fmt: Any) -> str:
     if not rows:
         return ""
     return (
-        '<table class="dt-table"><thead><tr><th>Indicator</th><th>Reading</th>'
-        f"<th>Status</th></tr></thead><tbody>{rows}</tbody></table>"
+        '<table class="dt-table"><thead><tr>'
+        f'<th>{i18n.bi("Indicator", "شاخص")}</th>'
+        f'<th>{i18n.bi("Reading", "قرائت")}</th>'
+        f'<th>{i18n.bi("Status", "وضعیت")}</th>'
+        f"</tr></thead><tbody>{rows}</tbody></table>"
     )
 
 
@@ -136,14 +158,22 @@ def _driver_line(status: Any, fmt: Any) -> str:
 
     The same observed ``Value`` view B/E animate from, so the number here and the motion there
     can never disagree. An absent driver (``None``) is stated — the payload's own UNKNOWN
-    status already carries that word on the state pill.
+    status already carries that word on the state pill. Bilingual ("driver" / «محرک»), with
+    the driving tag's canonical identifier intact and the reading anchored for playback.
     """
     driver = getattr(status, "driver", None)
     if driver is None:
-        return '<p class="dt-muted">driver unavailable: no driving variable is reported</p>'
+        return (
+            '<p class="dt-muted">'
+            f"{i18n.title_bi('driver unavailable: no driving variable is reported')}"
+            "</p>"
+        )
     return (
-        '<p class="dt-mono">driver <span class="dt-muted">'
-        f"{theme.html(driver.tag)}</span> {theme.html(theme.value_text(driver, fmt))}</p>"
+        '<p class="dt-mono">'
+        f"{i18n.bi('driver', 'محرک')} "
+        f'<span class="dt-muted">{i18n.tag_ref(driver.tag)}</span> '
+        f'<bdi data-otk="{i18n.value_key(driver.tag)}">{theme.html(theme.value_text(driver, fmt))}</bdi>'
+        "</p>"
     )
 
 
@@ -151,29 +181,33 @@ def _component_card(detail: Any, fmt: Any) -> str:
     """One :class:`~src.digital_twin.state.EquipmentDetail` as a card.
 
     The card title is the payload's own (``status.unit`` — the layout spec's title, e.g.
-    "Preheater tower"); the equipment key and model kind render in muted mono beneath it so the
-    card names exactly the PRD 8.3 component it speaks for. The state pill is the payload's own
-    state word (the same test that produced the twin's animation state), the health figure the
-    payload's own scalar. The readout is the component's own output tags — this renderer adds
-    no tag to any component.
+    "Preheater tower"), rendered bilingual via :func:`i18n.title_bi`; the equipment key and
+    model kind render in muted mono beneath it so the card names exactly the PRD 8.3 component
+    it speaks for. The state pill is the payload's own state word (bilingual via
+    :func:`i18n.state_bi`, anchored for playback), the health figure the payload's own scalar
+    (anchored likewise). The readout is the component's own output tags — this renderer adds
+    no tag to any component. The OBSERVED badge each card once carried is gone by the wave's
+    provenance rule: the channel is stated once per screen, not once per card.
     """
     status = detail.status
     title = status.unit or status.name
     table = _readout_table(tuple(detail.readout.values), fmt)
     if not table:
-        table = (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this component carries no '
-            "readout of its own. No reading is invented to fill the space.</p>"
+        empty = (
+            f"{UNAVAILABLE_TEXT}: this component carries no readout of its own. "
+            "No reading is invented to fill the space."
         )
+        table = f'<p class="dt-muted">{i18n.title_bi(empty)}</p>'
+    state_kind = _STATE_PILL.get(str(status.state), "unknown")
     return (
         '<div class="dt-card" data-role="process-component">'
-        f'<h3 class="dt-title">{theme.html(title)}</h3>'
-        f'<div class="dt-pr__badges">{_pill(status.state, _STATE_PILL.get(str(status.state), "unknown"))}'
-        f'{_provenance_badge(Provenance.OBSERVED)}</div>'
+        f'<h3 class="dt-title">{i18n.title_bi(title)}</h3>'
+        f'<div class="dt-pr__badges">{_pill(i18n.state_bi(status.state), state_kind, key=i18n.equipment_state_key(status.name))}</div>'
         '<div class="dt-pr__meta">'
         f'<span class="dt-mono dt-muted">{theme.html(status.name)} · {theme.html(status.kind)}</span>'
-        f'<span class="dt-mono">health <span class="dt-num">'
-        f"{theme.html(theme.format_number(status.health, fmt))}</span></span></div>"
+        f'<span class="dt-mono">{i18n.bi("health", "سلامت")} '
+        f'<bdi class="dt-num" data-otk="{i18n.equipment_health_key(status.name)}">'
+        f"{theme.html(theme.format_number(status.health, fmt))}</bdi></span></div>"
         f"{_driver_line(status, fmt)}"
         f"{table}"
         "</div>"
@@ -190,12 +224,13 @@ def _components_section(components: tuple[Any, ...], fmt: Any) -> str:
     cards = "".join(_component_card(detail, fmt) for detail in components)
     if not cards:
         cards = (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this provider reports none of '
-            "the components this screen focuses on. No card is invented to fill the space.</p>"
+            '<p class="dt-muted">'
+            f"{i18n.title_bi('unavailable: this provider reports none of the components this screen focuses on. No card is invented to fill the space.')}"
+            "</p>"
         )
     return (
         '<div class="dt-card dt-card--alt" data-role="process-components">'
-        "<h3 class=\"dt-title\">Components</h3>"
+        f'<h3 class="dt-title">{i18n.title_bi("Components")}</h3>'
         f'<div class="dt-pr__kpis">{cards}</div></div>'
     )
 
@@ -212,14 +247,11 @@ def _panel_card(panel: Any, fmt: Any) -> str:
     """
     table = _readout_table(tuple(panel.values), fmt)
     if not table:
-        table = (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this provider carries no '
-            f"{theme.html(panel.title)} readings. No value is invented to fill the space.</p>"
-        )
-    note = f'<p class="dt-muted">{theme.html(panel.note)}</p>' if panel.note else ""
+        table = f'<p class="dt-muted">{i18n.panel_empty_bi(panel.title)}</p>'
+    note = f'<p class="dt-muted">{i18n.title_bi(panel.note)}</p>' if panel.note else ""
     return (
         '<div class="dt-card" data-role="process-panel">'
-        f'<h3 class="dt-title">{theme.html(panel.title)}</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi(panel.title)}</h3>'
         f"{table}{note}"
         "</div>"
     )
@@ -236,13 +268,14 @@ def _panels_section(panels: tuple[Any, ...], fmt: Any) -> str:
     if not panels:
         return (
             '<div class="dt-card dt-card--alt" data-role="process-panels">'
-            "<h3 class=\"dt-title\">Process readouts</h3>"
-            '<p class="dt-muted">This screen carries no grouped readout panels of its own; '
-            "every reading it reports lives in the component cards above.</p></div>"
+            f'<h3 class="dt-title">{i18n.title_bi("Process readouts")}</h3>'
+            '<p class="dt-muted">'
+            f'{i18n.title_bi("This screen carries no grouped readout panels of its own; every reading it reports lives in the component cards above.")}'
+            "</p></div>"
         )
     return (
         '<div class="dt-card dt-card--alt" data-role="process-panels">'
-        '<h3 class="dt-title">Process readouts</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Process readouts")}</h3>'
         f"{''.join(_panel_card(panel, fmt) for panel in panels)}</div>"
     )
 
@@ -251,20 +284,22 @@ def _panels_section(panels: tuple[Any, ...], fmt: Any) -> str:
 # Item 9 — the KPI group the screen's dataset owns (view D carries none)
 # =============================================================================
 def _kpi_card(value: Value, fmt: Any) -> str:
-    """One KPI card: the payload's own number, status colour and provenance.
+    """One KPI card: the payload's own number, status colour and tag — bilingual.
 
     Same shape as the overview and energy renderers' KPI cards, so the three screens that show
-    a KPI group show it identically. A missing number shows the absence glyph, never a zero.
+    a KPI group show it identically. The label is the tag's own description with its Persian
+    entry; the canonical tag stays beneath as the secondary technical reference. A missing
+    number shows the absence glyph, never a zero. The per-card provenance badge is gone by the
+    wave's provenance rule (once per screen, not per card).
     """
-    title = value.description or value.tag
     number = theme.value_text(value, fmt)
     return (
         '<div class="dt-card" data-role="process-kpi">'
-        f'<h3 class="dt-title">{theme.html(title)}</h3>'
-        f'<div class="dt-pr__badges">{_pill(value.status, theme.status_slug(value.status))}'
-        f"{_provenance_badge(value.provenance)}</div>"
-        f'<p class="dt-mono" style="font-size:1.3em">{theme.html(number)}</p>'
-        f'<p class="dt-mono dt-muted">{theme.html(value.tag)}</p>'
+        f'<h3 class="dt-title">{i18n.tag_title(value)}</h3>'
+        f'<div class="dt-pr__badges">{_pill(i18n.status_bi(value.status), theme.status_slug(value.status), key=i18n.status_key(value.tag))}</div>'
+        f'<p class="dt-mono" style="font-size:1.3em">'
+        f'<bdi data-otk="{i18n.value_key(value.tag)}">{theme.html(number)}</bdi></p>'
+        f'<p class="dt-mono dt-muted">{i18n.tag_ref(value.tag)}</p>'
         "</div>"
     )
 
@@ -278,19 +313,18 @@ def _kpis_section(kpis: Any, fmt: Any) -> str:
     if kpis is None:
         return (
             '<div class="dt-card dt-card--alt" data-role="process-kpis">'
-            "<h3 class=\"dt-title\">KPIs</h3>"
-            '<p class="dt-muted">This screen carries no KPI group of its own.</p></div>'
+            f'<h3 class="dt-title">{i18n.title_bi("KPIs")}</h3>'
+            f'<p class="dt-muted">{i18n.title_bi("This screen carries no KPI group of its own.")}</p></div>'
         )
     cards = "".join(_kpi_card(value, fmt) for value in kpis.values)
     if not cards:
         cards = (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this provider carries no '
-            f"{theme.html(kpis.title)} KPI group. No card is invented to fill the space.</p>"
+            f'<p class="dt-muted">{i18n.kpi_group_empty_bi(kpis.title)}</p>'
         )
-    note = f'<p class="dt-muted">{theme.html(kpis.note)}</p>' if kpis.note else ""
+    note = f'<p class="dt-muted">{i18n.title_bi(kpis.note)}</p>' if kpis.note else ""
     return (
         f'<div class="dt-card dt-card--alt" data-role="process-kpis">'
-        f'<h3 class="dt-title">{theme.html(kpis.title)} KPIs</h3>'
+        f'<h3 class="dt-title">{i18n.kpi_group_title(kpis.title)}</h3>'
         f'<div class="dt-pr__kpis">{cards}</div>{note}</div>'
     )
 
@@ -318,16 +352,18 @@ def render_process(model: Any, *, settings: Any, theme_name: str = theme.DARK) -
         f'<p class="dt-muted dt-pr__notices">{theme.html(text)}</p>'
         for text in (header.notices if header is not None else ())
     )
+    # One screen-level provenance badge (the wave's provenance rule): every reading on this
+    # screen is OBSERVED, so the channel is stated once here — not once per row or per card. The
+    # simulated / not-validated wording lives once per document (the shell's global disclosure).
     badges = [
-        _badge(labels.SIMULATED_RESULT_LABEL, "configuration"),
-        _badge(labels.NOT_VALIDATED_LABEL, "configuration"),
+        _provenance_badge(Provenance.OBSERVED),
     ]
     return (
         f'<div class="{theme.theme_class(theme_name)}">'
         f"{_panel_style()}"
         '<div class="dt-pr">'
         f'<div class="dt-pr__badges">{"".join(badges)}'
-        f'<span class="dt-mono dt-muted">{theme.html(stamp)}</span></div>'
+        f'<span class="dt-mono dt-muted"><bdi data-otk="{i18n.STAMP_KEY}">{theme.html(stamp)}</bdi></span></div>'
         f"{''.join(notices)}"
         f"{_components_section(tuple(model.components), fmt)}"
         f"{_panels_section(tuple(model.panels), fmt)}"

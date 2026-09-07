@@ -57,7 +57,7 @@ from typing import Any, Final, Mapping
 
 from src import labels
 from src.optimization.objective import ELECTRIC_TAG, THERMAL_TAG
-from src.visualization import theme
+from src.visualization import i18n, theme
 
 #: What a card that has nothing honest to show displays — the same wording the view A / H / J
 #: renderers use, so every screen states absence the same way. The renderer's own word (not
@@ -113,12 +113,16 @@ _STATUS_PILL: Final[Mapping[str, str]] = {"NORMAL": "ok", "WARNING": "warn", "AL
 
 
 def _panel_style() -> str:
-    """Scoped layout CSS for the panel. Geometry only — colours and type come from the theme."""
+    """Scoped layout CSS for the panel. Geometry only — colours and type come from the theme.
+
+    ``minmax(min(15em,100%),1fr)`` — the Executive-Demo global grid fix (capped floor so the
+    card grid shrinks inside a narrow tab instead of overflowing it).
+    """
     return (
         "<style>.dt-pres{display:flex;flex-direction:column;gap:var(--dt-gap);}"
         ".dt-pres__badges{display:flex;flex-wrap:wrap;gap:.4em;align-items:center;}"
         ".dt-pres__cards{display:grid;gap:var(--dt-gap);"
-        "grid-template-columns:repeat(auto-fit,minmax(15em,1fr));}"
+        "grid-template-columns:repeat(auto-fit,minmax(min(15em,100%),1fr));}"
         ".dt-pres__chain{display:flex;flex-wrap:wrap;gap:.4em;align-items:stretch;}"
         ".dt-pres__arrow{display:flex;align-items:center;color:var(--dt-accent-alt);"
         "font-size:1.4em;padding:0 .1em;}"
@@ -129,8 +133,10 @@ def _panel_style() -> str:
     )
 
 
-def _pill(text: object, kind: str) -> str:
-    return f'<span class="dt-pill dt-pill--{kind}">{theme.html(text)}</span>'
+def _pill(text: object, kind: str, *, key: str | None = None) -> str:
+    """A status pill, optionally carrying a playback anchor (``data-otk``)."""
+    anchor = f' data-otk="{theme.html(key)}"' if key else ""
+    return f'<span class="dt-pill dt-pill--{kind}"{anchor}>{text}</span>'
 
 
 def _badge(text: object, kind: str) -> str:
@@ -190,7 +196,7 @@ def _saving_card(
     """
     if per_day is None:
         body = (
-            f'<p class="dt-mono">{theme.html(UNAVAILABLE_TEXT)}</p>'
+            f'<p class="dt-mono">{i18n.title_bi(UNAVAILABLE_TEXT)}</p>'
             f'<p class="dt-muted">{theme.html(reason)}</p>'
         )
     else:
@@ -206,7 +212,7 @@ def _saving_card(
         )
     return (
         '<div class="dt-card" data-role="kpi-card">'
-        f'<h3 class="dt-title">{theme.html(title)}</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi(title)}</h3>'
         f'<div class="dt-pres__badges">{_badge(labels.presentation_card_label("estimate"), "configuration")}'
         f"{_provenance_badge(provenance)}</div>"
         f"{body}"
@@ -224,9 +230,9 @@ def _gap_card(title: str, reason: str) -> str:
     """
     return (
         '<div class="dt-card" data-role="kpi-card">'
-        f'<h3 class="dt-title">{theme.html(title)}</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi(title)}</h3>'
         f'<div class="dt-pres__badges">{_badge(labels.presentation_card_label("synthetic"), "configuration")}</div>'
-        f'<p class="dt-mono">{theme.html(UNAVAILABLE_TEXT)}</p>'
+        f'<p class="dt-mono">{i18n.title_bi(UNAVAILABLE_TEXT)}</p>'
         f'<p class="dt-muted">{theme.html(reason)}</p>'
         "</div>"
     )
@@ -242,20 +248,24 @@ def _anomaly_card(tile: Any) -> str:
     """
     if not tile.available:
         body = (
-            f'<p class="dt-mono">{theme.html(UNAVAILABLE_TEXT)}</p>'
+            f'<p class="dt-mono">{i18n.title_bi(UNAVAILABLE_TEXT)}</p>'
             f'<p class="dt-muted">{theme.html(tile.detail)}</p>'
         )
-        head = _pill(tile.status, "unknown")
+        head = _pill(i18n.status_bi(tile.status), "unknown", key=i18n.anomaly_status_key())
     else:
-        head = _pill(tile.status, _STATUS_PILL.get(str(tile.status), "unknown"))
+        head = _pill(
+            i18n.status_bi(tile.status),
+            _STATUS_PILL.get(str(tile.status), "unknown"),
+            key=i18n.anomaly_status_key(),
+        )
         body = (
-            f'<p class="dt-mono" style="font-size:1.3em">{theme.html(tile.status)}</p>'
+            f'<p class="dt-mono" style="font-size:1.3em">{i18n.status_bi(tile.status)}</p>'
             f"<p>{theme.html(tile.detail)}</p>"
-            f'<p class="dt-muted">{theme.html(ANOMALY_VERDICT_NOTE)}</p>'
+            f'<p class="dt-muted">{i18n.title_bi(ANOMALY_VERDICT_NOTE)}</p>'
         )
     return (
         '<div class="dt-card" data-role="kpi-card">'
-        f'<h3 class="dt-title">{theme.html(CARD_ANOMALIES)}</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi(CARD_ANOMALIES)}</h3>'
         f'<div class="dt-pres__badges">{_badge(labels.presentation_card_label("synthetic"), "configuration")}'
         f"{_provenance_badge(tile.provenance)}</div>"
         f'<div>{head}</div>'
@@ -284,7 +294,7 @@ def _unavailable_reason(view: Any, *, stage: str) -> str:
 def _chain_card(title: str, body: str) -> str:
     return (
         '<div class="dt-card dt-pres__stage" data-role="chain-stage">'
-        f'<h3 class="dt-title">{theme.html(title)}</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi(title)}</h3>'
         f"{body}"
         "</div>"
     )
@@ -293,18 +303,20 @@ def _chain_card(title: str, body: str) -> str:
 def _current_state_card(stages: tuple[Any, ...]) -> str:
     """Stage 1 — the plant as view A's chain reports it: each stage's own state word.
 
-    The state words are the item-3 throughput test's own (RUNNING / IDLE / UNKNOWN); the rates
-    and equipment detail stay on view A — this overlay keeps one word per stage.
+    The state words are the item-3 throughput test's own (RUNNING / IDLE / UNKNOWN), bilingual
+    via :func:`i18n.state_bi` and anchored for playback with the same ``g:{name}`` key view A's
+    stage cards carry, so the two screens can never disagree; the rates and equipment detail
+    stay on view A — this overlay keeps one word per stage.
     """
     lines = "".join(
-        f'<div class="dt-pres__line"><span>{theme.html(stage.title)}</span>'
-        f'<span class="dt-muted">{theme.html(stage.state)}</span></div>'
+        f'<div class="dt-pres__line"><span>{i18n.title_bi(stage.title)}</span>'
+        f'<span class="dt-muted" data-otk="{i18n.stage_state_key(stage.name)}">{i18n.state_bi(stage.state)}</span></div>'
         for stage in stages
     )
     if not lines:
         lines = (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this provider carries no '
-            "stage chain.</p>"
+            '<p class="dt-muted">'
+            f'{i18n.title_bi("unavailable: this provider carries no stage chain.")}</p>'
         )
     return _chain_card(CHAIN_CURRENT, f'<div class="dt-pres__stages">{lines}</div>')
 
@@ -318,21 +330,22 @@ def _prediction_card(view: Any) -> str:
     """
     if not view.available:
         body = (
-            f'<p class="dt-mono">{theme.html(UNAVAILABLE_TEXT)}</p>'
+            f'<p class="dt-mono">{i18n.title_bi(UNAVAILABLE_TEXT)}</p>'
             f'<p class="dt-muted">{theme.html(_unavailable_reason(view, stage="prediction"))}</p>'
         )
     else:
         grid = view.predicted_states()
         if grid is None:
             body = (
-                f'<p class="dt-mono">{theme.html(UNAVAILABLE_TEXT)}</p>'
-                '<p class="dt-muted">the optimizer was not run or refused every candidate, so '
-                "there is no recommended action to predict from.</p>"
+                f'<p class="dt-mono">{i18n.title_bi(UNAVAILABLE_TEXT)}</p>'
+                '<p class="dt-muted">'
+                f'{i18n.title_bi("the optimizer was not run or refused every candidate, so there is no recommended action to predict from.")}'
+                "</p>"
             )
         elif not grid:
             body = (
-                f'<p class="dt-mono">{theme.html(UNAVAILABLE_TEXT)}</p>'
-                "<p class=\"dt-muted\">this recommendation carries no horizon predictions.</p>"
+                f'<p class="dt-mono">{i18n.title_bi(UNAVAILABLE_TEXT)}</p>'
+                f'<p class="dt-muted">{i18n.title_bi("this recommendation carries no horizon predictions.")}</p>'
             )
         else:
             horizons = sorted(str(key) for key in grid)
@@ -340,10 +353,11 @@ def _prediction_card(view: Any) -> str:
             count = len(first) if isinstance(first, Mapping) else 0
             span = horizons[0] if len(horizons) == 1 else f"{horizons[0]} … {horizons[-1]}"
             body = (
-                f"<p>Model A forecasts <strong>{count} plant values</strong> for the "
-                f"recommended action over {theme.html(span)}.</p>"
-                '<p class="dt-muted">The full forecast grid is on the AI Prediction &amp; '
-                "Anomaly and AI Optimization screens (views H and J).</p>"
+                f"<p>{i18n.title_bi('Model A forecasts')} "
+                f"<strong>{count} {i18n.title_bi('plant values')}</strong> "
+                f"{i18n.title_bi('for the recommended action over')} "
+                f"<bdi>{theme.html(span)}</bdi>.</p>"
+                f'<p class="dt-muted">{i18n.title_bi("The full forecast grid is on the AI Prediction & Anomaly and AI Optimization screens (views H and J).")}</p>'
             )
     return _chain_card(CHAIN_PREDICTION, body)
 
@@ -382,7 +396,7 @@ def _action_card(view: Any, rec: Mapping[str, Any] | None) -> str:
     if not view.available or view.refused or not isinstance(rec, Mapping):
         return _chain_card(
             CHAIN_ACTION,
-            f'<p class="dt-mono">{theme.html(UNAVAILABLE_TEXT)}</p>'
+            f'<p class="dt-mono">{i18n.title_bi(UNAVAILABLE_TEXT)}</p>'
             f'<p class="dt-muted">{theme.html(_unavailable_reason(view, stage="recommended action"))}</p>',
         )
     deltas = rec.get("delta_fractions") or {}
@@ -394,7 +408,7 @@ def _action_card(view: Any, rec: Mapping[str, Any] | None) -> str:
     action = (
         f'<p class="dt-mono">{moves}</p>'
         if moves
-        else "<p>Hold the current setpoints.</p>"
+        else f'<p>{i18n.title_bi("Hold the current setpoints.")}</p>'
     )
     quality = str(rec.get("recommendation_quality", ""))
     pill = f'{_pill(quality, _QUALITY_PILL.get(quality, "unknown"))}' if quality else ""
@@ -427,11 +441,11 @@ def _benefit_card(
     if not view.available or view.refused or not isinstance(impact, Mapping):
         return _chain_card(
             CHAIN_BENEFIT,
-            f'<p class="dt-mono">{theme.html(UNAVAILABLE_TEXT)}</p>'
+            f'<p class="dt-mono">{i18n.title_bi(UNAVAILABLE_TEXT)}</p>'
             f'<p class="dt-muted">{theme.html(_unavailable_reason(view, stage="expected benefit"))}</p>',
         )
     rows = "".join(
-        f'<div class="dt-pres__line"><span>{theme.html(title)}</span>'
+        f'<div class="dt-pres__line"><span>{i18n.title_bi(title)}</span>'
         f'<span class="dt-mono">{theme.html(_headline_number(impact.get(key), decimals))}'
         f" {theme.html(unit)}</span></div>"
         for title, key, unit in (
@@ -515,20 +529,19 @@ def render_presentation(model: Any, *, settings: Any, theme_name: str = theme.DA
         '<div class="dt-pres">'
         f'<div class="dt-pres__badges">'
         f'{_badge(labels.presentation_card_label("synthetic"), "configuration")}'
-        f'{_badge(labels.NOT_VALIDATED_LABEL, "configuration")}'
-        f'<span class="dt-mono dt-muted">{theme.html(stamp)}</span></div>'
+        f'<span class="dt-mono dt-muted"><bdi data-otk="{i18n.STAMP_KEY}">{theme.html(stamp)}</bdi></span></div>'
         '<div class="dt-card dt-card--alt" data-role="kpis">'
-        '<h3 class="dt-title">KPI cards</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("KPI cards")}</h3>'
         f'<div class="dt-pres__cards">{cards}</div></div>'
         '<div class="dt-card dt-card--alt" data-role="chain">'
-        '<h3 class="dt-title">From plant state to expected benefit</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("From plant state to expected benefit")}</h3>'
         f'<div class="dt-pres__chain">{chain_html}</div></div>'
         '<div class="dt-card dt-card--alt" data-role="transfer-strategy">'
-        '<h3 class="dt-title">Synthetic-to-Real Transfer Strategy (PRD &sect;21)</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Synthetic-to-Real Transfer Strategy (PRD §21)")}</h3>'
         f'<p>{theme.html(labels.TRANSFER_STRATEGY_STATEMENT)}</p>'
-        '<p class="dt-muted">Every number on this screen is a synthetic demonstration or a '
-        "simulation estimate, not a validated real-plant result — the full transfer strategy "
-        "is Section 21 of the PRD.</p></div>"
+        '<p class="dt-muted">'
+        f'{i18n.title_bi("Every number on this screen is a synthetic demonstration or a simulation estimate, not a validated real-plant result — the full transfer strategy is Section 21 of the PRD.")}'
+        "</p></div>"
         f'<div class="dt-banner">{theme.html(labels.NO_PLANT_CONNECTION_STATEMENT)}</div>'
         "</div></div>"
     )

@@ -44,10 +44,10 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping, Sequence
-from typing import Any, Callable
+from typing import Any, Callable, Final
 
 from src import labels
-from src.visualization import theme
+from src.visualization import playback, theme
 
 #: What the caller hands in: build one screen's view model and render it. This is
 #: :func:`app.build_view_section` (the dispatch :func:`app.build_document` shares), injected so
@@ -63,14 +63,33 @@ SUBTITLE_EN: str = "AI-assisted monitoring, simulation, prediction & optimizatio
 SUBTITLE_FA: str = "پایش، شبیه‌سازی، پیش‌بینی و بهینه‌سازی مبتنی بر هوش مصنوعی"
 
 #: The honest statement about the two language levels, in both languages (wave-mandated wording).
+#: The wave's localization made every panel bilingual, so the note now states what remains
+#: English by design: the canonical technical identifiers, kept intact for traceability.
 TECHNICAL_PANELS_NOTE_EN: str = (
-    "Detailed technical panels are currently shown in English. The management guidance and "
-    "navigation are available in English and Persian."
+    "Technical identifiers (tag names such as mill_motor_power_kw) are kept in their canonical "
+    "English form so every value stays traceable to its source; the panels, labels and "
+    "descriptions around them are available in English and Persian."
 )
 TECHNICAL_PANELS_NOTE_FA: str = (
-    "جزئیات فنی پنل‌ها در این نسخه به زبان انگلیسی نمایش داده می‌شوند؛ راهنمای مدیریتی و "
-    "مسیرهای اصلی به دو زبان فارسی و انگلیسی در دسترس هستند."
+    "شناسه‌های فنی (نام تگ‌هایی مانند mill_motor_power_kw) به شکل استاندارد انگلیسی حفظ "
+    "می‌شوند تا هر مقدار به منبع خودش قابل ردیابی بماند؛ پنل‌ها، برچسب‌ها و توضیحات "
+    "پیرامون آن‌ها به دو زبان فارسی و انگلیسی در دسترس هستند."
 )
+
+#: The one global demo-mode disclosure (the wave's exact mandated wording) — in the header and
+#: the footer, replacing the per-panel synthetic labels the renderers used to repeat.
+DEMO_DISCLOSURE_EN: str = (
+    "Demo Mode — All displayed process data is synthetic and this demo is not connected to a "
+    "real plant."
+)
+DEMO_DISCLOSURE_FA: str = (
+    "حالت نمایشی — تمام داده‌های فرایندی این نسخه مصنوعی است و این دمو به کارخانه واقعی "
+    "متصل نیست."
+)
+
+#: The playback bar's honest label: simulated, never "LIVE"/"REAL-TIME" (the wave's rule).
+PLAYBACK_LABEL_EN: str = "SIMULATED LIVE DEMO"
+PLAYBACK_LABEL_FA: str = "شبیه‌سازی زنده نمایشی"
 
 # =============================================================================
 # Tabs: key -> (English label, Persian label) and key -> (English, Persian) explanation
@@ -281,12 +300,28 @@ GUIDE_BLOCKS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
         "نحوهٔ استفاده از این سند",
         (
             (
-                "Use the tabs above to move between sections. Each tab opens with a short "
-                "plain-language explanation, followed by the existing technical panels. Use the "
-                "English | فارسی selector to switch the language of the guidance and navigation.",
-                "برای جابه‌جایی میان بخش‌ها از زبانه‌های بالا استفاده کنید. هر زبانه با توضیح "
-                "کوتاه و ساده‌ای آغاز می‌شود و سپس پنل‌های فنی موجود نمایش داده می‌شوند. با "
-                "گزینهٔ English | فارسی می‌توانید زبان راهنما و مسیریابی را تغییر دهید.",
+                "1. Select the language — English or فارسی — with the selector at the top; the "
+                "guidance, panels and labels all switch.",
+                "۱. زبان را — انگلیسی یا فارسی — با گزینهٔ بالای صفحه انتخاب کنید؛ راهنما، "
+                "پنل‌ها و برچسب‌ها همه تغییر می‌کنند.",
+            ),
+            (
+                "2. Start the simulated playback with the Play button in the playback bar: the "
+                "plant clock, values and status colours advance through a pre-recorded "
+                "simulation. Speed can be set to 1x, 2x or 4x; Pause holds; Reset returns to "
+                "the first minute.",
+                "۲. پخش شبیه‌سازی‌شده را با دکمهٔ Play در نوار پخش آغاز کنید: ساعت کارخانه، "
+                "مقادیر و رنگ وضعیت‌ها در طول یک شبیه‌سازی از پیش ضبط‌شده پیش می‌روند. سرعت "
+                "را می‌توان روی ۱x، ۲x یا ۴x گذاشت؛ Pause نگه می‌دارد؛ Reset به دقیقهٔ اول "
+                "برمی‌گردد.",
+            ),
+            (
+                "3. Explore the views with the tabs above — from the plant overview to the "
+                "AI prediction, optimization and what-if tabs. Each opens with a short "
+                "plain-language explanation before the technical panels.",
+                "۳. نماهای مختلف را با زبانه‌های بالا کاوش کنید — از نمای کلی کارخانه تا "
+                "زبانه‌های پیش‌بینی، بهینه‌سازی و «اگر-آنگاه» هوش مصنوعی. هر زبانه با توضیح "
+                "کوتاه و ساده‌ای پیش از پنل‌های فنی آغاز می‌شود.",
             ),
         ),
     ),
@@ -514,10 +549,32 @@ def _shell_style() -> str:
         ".ot-guide,.ot-alerts{display:flex;flex-direction:column;gap:var(--dt-gap);}"
         ".ot-guide ul,.ot-alerts ul{margin:.2em 0;padding-inline-start:1.4em;}"
         ".ot-badges{display:flex;flex-wrap:wrap;gap:.4em;margin:.4em 0;}"
+        # -- the simulated-playback bar (directive item 7): one row, honest label, controls ---
+        ".ot-play{display:flex;flex-wrap:wrap;gap:.5em;align-items:center;"
+        "border:var(--dt-border-width) solid var(--dt-border);border-radius:var(--dt-radius);"
+        "padding:var(--dt-gap-sm) var(--dt-pad);background:var(--dt-surface);margin:0 0 "
+        "var(--dt-gap);}"
+        ".ot-play .ot-playlabel{font-size:var(--dt-size-label);color:var(--dt-accent);"
+        "font-weight:600;}"
+        ".ot-play .ot-clock{font-family:var(--dt-font-mono);color:var(--dt-text);"
+        "border-inline-start:var(--dt-border-width) solid var(--dt-border);"
+        "padding-inline-start:.8em;}"
+        ".ot-play .ot-clock .ot-en{color:var(--dt-text-muted);font-size:var(--dt-size-label);}"
+        ".ot-play button{font:inherit;color:var(--dt-text);background:var(--dt-surface);"
+        "border:var(--dt-border-width) solid var(--dt-border);"
+        "border-radius:var(--dt-radius-sm);padding:.25em .9em;cursor:pointer;}"
+        ".ot-play button.ot-on{border-color:var(--dt-accent);color:var(--dt-accent);"
+        "font-weight:600;}"
+        ".ot-play .ot-progress{flex:1 1 8em;height:.4em;border-radius:.2em;"
+        "background:var(--dt-surface-alt);overflow:hidden;min-width:6em;}"
+        ".ot-play .ot-progress i{display:block;height:100%;width:0;"
+        "background:var(--dt-accent);}"
         ".ot-meta{border-collapse:collapse;font-size:var(--dt-size-label);"
         "color:var(--dt-text-muted);direction:ltr;text-align:left;}"
         ".ot-meta th,.ot-meta td{padding:.1em .8em .1em 0;font-weight:400;}"
         ".ot-footer{display:flex;flex-direction:column;gap:.4em;max-width:60em;}"
+        ".ot-disclosure{max-width:60em;margin:.2em 0 .2em;}"
+        ".ot-disclosure p{margin:0;color:var(--dt-text-muted);font-size:var(--dt-size-label);}"
         "@media (max-width:48rem){.ot-shell{padding:var(--dt-gap-sm);}"
         ".ot-header h1{font-size:1.25em;}}"
         "</style>"
@@ -535,17 +592,62 @@ def _js_string(text: str) -> str:
     return str(text).replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _shell_script() -> str:
-    """The whole runtime: a language switch, a tab switch, two class toggles. No libraries.
+#: The beat interval of the playback timer, in milliseconds. One beat advances one sample at
+#: 1x — a deliberately unhurried cadence so a presenter can talk over it; 2x/4x halve/quarter
+#: the beat rather than multiplying the step, which keeps every tick on the same sample grid.
+_PLAYBACK_BEAT_MS: Final[int] = 1500
+
+#: The speeds the playback bar offers (the wave's mandated 1x / 2x / 4x).
+_PLAYBACK_SPEEDS: Final[tuple[float, ...]] = (1.0, 2.0, 4.0)
+
+
+def _playback_bar() -> str:
+    """The simulated-playback bar: honest label, transport, clock, speed, progress.
+
+    Present even when no timeline was embedded — with the same controls and a clock that
+    stays on the document's opening timestamp. The bar is labelled "SIMULATED LIVE DEMO" /
+    "شبیه‌سازی زنده نمایشی" in both languages; the word "live" is never used alone, and the
+    playback is never called real-time.
+    """
+    buttons = "".join(
+        f'<button type="button" class="ot-speed{" ot-on" if speed == 1.0 else ""}" '
+        f'data-speed="{speed:g}" onclick="otSetSpeed({speed:g})">{speed:g}x</button>'
+        for speed in _PLAYBACK_SPEEDS
+    )
+    return (
+        '<div class="ot-play" data-role="playback-bar">'
+        f'<span class="ot-playlabel">{_bi(PLAYBACK_LABEL_EN, PLAYBACK_LABEL_FA)}</span>'
+        '<button type="button" class="ot-playtoggle" onclick="otTogglePlay()" '
+        f'>{_bi("Play", "پخش")}</button>'
+        '<button type="button" onclick="otResetPlayback()" '
+        f'>{_bi("Reset", "بازنشانی")}</button>'
+        f"{buttons}"
+        f'<span class="ot-progress"><i data-role="playback-progress"></i></span>'
+        f'<span class="ot-clock"><span class="ot-en">sim time:</span>'
+        f'<span class="ot-fa">زمان شبیه‌سازی:</span> '
+        f'<bdi data-role="playback-clock"></bdi></span>'
+        "</div>"
+    )
+
+
+def _shell_script(timeline_json: str) -> str:
+    """The whole runtime: a language switch, a tab switch, the simulated playback. No libraries.
 
     ``otSetLang`` writes ``<html lang>`` and ``<html dir>`` — the same attributes the CSS
     language rules read — so the switch is one attribute write, never a re-render: the embedded
     technical panels are not touched. ``otShowTab`` toggles one ``.ot-on`` class per panel.
-    The ``body.ot-js`` class is added only by this script, so with scripting disabled every
-    panel remains visible and the document degrades to one long, complete page.
+    The playback replays the embedded ``OT_TIMELINE`` — the renderers' own output, diffed per
+    tick at export time — by patching ``data-otk``-anchored nodes: plain strings replace
+    ``textContent``, ``[en, fa, cls]`` triples patch the two language children of a bilingual
+    pill and swap its ``dt-pill--*`` class so a status change also changes its colour. No
+    ``Math.random``, no network, no library: the same embedded data replays identically every
+    time. The ``body.ot-js`` class is added only by this script, so with scripting disabled
+    every panel remains visible and the document degrades to one long, complete page.
     """
     return (
         "<script>\n"
+        "var OT_TIMELINE=" + timeline_json + ";\n"
+        f"var OT_BEAT_MS={_PLAYBACK_BEAT_MS};\n"
         "function otSetLang(lang){\n"
         '  var root=document.documentElement;\n'
         '  root.lang=lang;\n'
@@ -565,8 +667,71 @@ def _shell_script() -> str:
         "  for(var i=0;i<tabs.length;i++){"
         'tabs[i].classList.toggle("ot-on",tabs[i].getAttribute("data-tab")===key);}\n'
         "}\n"
+        # -- simulated playback (directive item 7) ------------------------------------------
+        "var otTicks=OT_TIMELINE?OT_TIMELINE.ticks:[],\n"
+        "    otIndex=0,otPlaying=false,otTimer=null,otSpeed=1;\n"
+        "function otStamp(){var t=otTicks[otIndex];return t&&t.stamp?String(t.stamp):\"\";}\n"
+        "function otClockText(){\n"
+        '  var nodes=document.querySelectorAll("[data-role=playback-clock]");\n'
+        "  var text=otStamp();\n"
+        "  for(var i=0;i<nodes.length;i++){nodes[i].textContent=text||nodes[i].textContent;}\n"
+        "}\n"
+        "function otApply(tick){\n"
+        '  var nodes=document.querySelectorAll("[data-otk]"),i,node,key,patch;\n'
+        "  for(i=0;i<nodes.length;i++){\n"
+        "    node=nodes[i];key=node.getAttribute(\"data-otk\");\n"
+        "    if(!Object.prototype.hasOwnProperty.call(tick,key)){continue;}\n"
+        "    patch=tick[key];\n"
+        "    if(typeof patch===\"string\"){node.textContent=patch;continue;}\n"
+        '    var kids=node.querySelectorAll(".dt-en,.dt-fa");\n'
+        "    if(kids.length>=2){\n"
+        "      kids[0].textContent=patch[0];kids[1].textContent=patch[1];\n"
+        "    }\n"
+        '    if(patch[2]){node.className=node.className.replace(/dt-pill--[a-z_]+/g,"");\n'
+        '      node.className+=" dt-pill--"+patch[2];}\n'
+        "  }\n"
+        "}\n"
+        "function otFrame(){\n"
+        "  if(otIndex>=otTicks.length-1){otPause();return;}\n"
+        "  otIndex++;otApply(otTicks[otIndex]);otClockText();otProgress();\n"
+        "}\n"
+        "function otProgress(){\n"
+        '  var bars=document.querySelectorAll("[data-role=playback-progress]");\n'
+        "  var f=otTicks.length>1?otIndex/(otTicks.length-1):0;\n"
+        "  for(var i=0;i<bars.length;i++){bars[i].style.width=(100*f)+\"%\";}\n"
+        '  var toggle=document.querySelector(".ot-playtoggle");\n'
+        "  if(toggle&&toggle.classList){\n"
+        '    toggle.classList.toggle("ot-on",otPlaying);}\n'
+        "}\n"
+        "function otTogglePlay(){if(otPlaying){otPause();}else{otPlay();}}\n"
+        "function otPlay(){\n"
+        "  if(!otTicks.length||otIndex>=otTicks.length-1){return;}\n"
+        "  otPlaying=true;\n"
+        '  if(otTimer){clearInterval(otTimer);}\n'
+        '  otTimer=setInterval(otFrame,OT_BEAT_MS/otSpeed);\n'
+        "  otProgress();\n"
+        "}\n"
+        "function otPause(){\n"
+        "  otPlaying=false;\n"
+        '  if(otTimer){clearInterval(otTimer);otTimer=null;}\n'
+        "  otProgress();\n"
+        "}\n"
+        "function otResetPlayback(){\n"
+        "  otPause();\n"
+        "  if(!otTicks.length){return;}\n"
+        "  otIndex=0;otApply(otTicks[0]);otClockText();otProgress();\n"
+        "}\n"
+        "function otSetSpeed(speed){\n"
+        "  otSpeed=speed;\n"
+        '  var buttons=document.querySelectorAll(".ot-speed");\n'
+        "  for(var i=0;i<buttons.length;i++){"
+        'buttons[i].classList.toggle("ot-on",parseFloat(buttons.getAttribute("data-speed"))===speed);}\n'
+        "  if(otPlaying){otPlay();}\n"
+        "}\n"
         'document.body.classList.add("ot-js");\n'
-        'otShowTab("guide");\n'
+        'if(otTicks.length){otApply(otTicks[0]);}\n'
+        "otClockText();otProgress();\n"
+        'otShowTab("presentation");\n'
         "</script>"
     )
 
@@ -601,6 +766,7 @@ def build_ot_document(
     render_view: RenderView,
     theme_name: str = theme.DARK,
     meta: Mapping[str, object] | None = None,
+    build_timeline: Callable[..., Any] | None = None,
 ) -> tuple[str, dict[str, float]]:
     """Assemble the consolidated management document and return it with per-view timings.
 
@@ -612,6 +778,12 @@ def build_ot_document(
     Every view that raises is re-raised as :class:`RuntimeError` naming the screen, exactly as
     :func:`app.build_document` does: a broken tab fails the document, it is never replaced by a
     placeholder.
+
+    ``build_timeline``, when handed in, is :func:`src.visualization.playback.build_timeline`
+    over the same ``render_view``: the simulated-playback timeline is built once here and
+    embedded as the script's ``OT_TIMELINE`` literal, so every playback patch is the
+    renderers' own output. The callable is injected rather than imported so a stub state in a
+    test can decline playback without this module needing to know what a provider is.
 
     The returned mapping is ``view_id -> seconds`` for the build-plus-render of that screen,
     measured with :func:`time.perf_counter` — reported, never estimated.
@@ -639,6 +811,10 @@ def build_ot_document(
             models[view_id] = model
             blocks.append(f'<div class="ot-tech" dir="ltr">{section_html}</div>')
         sections.append(_tab_panel(tab_key, "".join(blocks)))
+
+    timeline: Mapping[str, Any] | None = None
+    if build_timeline is not None:
+        timeline = build_timeline(state, render_view=render_view, settings=settings)
 
     rows = "".join(
         f"<tr><th>{theme.html(key)}</th><td>{theme.html(value)}</td></tr>"
@@ -685,16 +861,19 @@ def build_ot_document(
             '<button type="button" class="ot-langbtn" data-lang="fa" '
             'onclick="otSetLang(\'fa\')">فارسی</button></div>'
             f'<div class="ot-badges">{badges}</div>'
+            f'<div class="ot-disclosure" data-role="demo-disclosure">{_bi(DEMO_DISCLOSURE_EN, DEMO_DISCLOSURE_FA, tag="p")}</div>'
             f'<table class="ot-meta">{rows}</table>'
             "</header>"
+            f"{_playback_bar()}"
             f'<nav class="ot-tabs">{tabs}</nav>'
             f"{''.join(sections)}"
             '<footer class="ot-footer">'
             f"{statements}"
+            f'{_bi(DEMO_DISCLOSURE_EN, DEMO_DISCLOSURE_FA, tag="p")}'
             f'{_bi(TECHNICAL_PANELS_NOTE_EN, TECHNICAL_PANELS_NOTE_FA, tag="p")}'
             f"{footer_note}</footer>"
             "</div>"
-            f"{_shell_script()}</body></html>"
+            f"{_shell_script(playback.timeline_json(timeline))}</body></html>"
         ),
         timings,
     )
@@ -702,6 +881,10 @@ def build_ot_document(
 
 __all__ = [
     "ALERTS_TRACEABILITY_NOTE",
+    "DEMO_DISCLOSURE_EN",
+    "DEMO_DISCLOSURE_FA",
+    "PLAYBACK_LABEL_EN",
+    "PLAYBACK_LABEL_FA",
     "RenderView",
     "SUBTITLE_EN",
     "SUBTITLE_FA",

@@ -555,7 +555,8 @@ def test_view_i_routes_to_the_renderer_in_build_document(
 ) -> None:
     html, timings = app.build_document(StubState({"I": StubWhatIfModel()}), ("I",),
                                        settings=settings)
-    assert "I — What-If Simulation" in html
+    # The heading id sits in a <span class="dt-mono"> wrapper before the bilingual title pair.
+    assert 'I</span> — <span class="dt-en" dir="ltr">What-If Simulation</span>' in html
     assert 'data-role="whatif-sliders"' in html
     assert "no renderer for this screen yet" not in html  # not the payload fallback
     assert list(timings) == ["I"]

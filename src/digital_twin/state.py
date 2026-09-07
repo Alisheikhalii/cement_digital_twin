@@ -958,7 +958,10 @@ class DashboardState:
                 "H",
                 frame,
                 timestamp=predictions.timestamp or stamp,
-                notices=(labels.SIMULATED_RESULT_LABEL, labels.NOT_VALIDATED_LABEL),
+                # Item 20 / the demo directive's single-disclosure rule: the simulated /
+                # not-validated wording lives once per document (the OT shell's global
+                # disclosure), so this header carries no notice of its own — view H's banner
+                # below states the no-plant-connection standing rule.
             ),
             dataset=dataset,
             predictions=predictions,

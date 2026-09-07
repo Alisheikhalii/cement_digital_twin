@@ -61,6 +61,7 @@ from src.visualization import (
     optimization_view,
     ot_shell,
     overview_view,
+    playback,
     presentation_view,
     process_view,
     svg_twin,
@@ -193,12 +194,21 @@ def _source_is_synthetic(state: Any) -> bool:
 
 
 def _heading_html(model: Any, view_id: str) -> str:
+    """One screen's heading: the view id, then the payload's own title and subtitle, bilingual.
+
+    The id stays Latin/monospace in both languages (it is the screen's canonical identifier);
+    the title and subtitle render as the ``i18n`` language pair, with the payload's own English
+    wording the visible fallback when no Persian entry exists — never a blank, never a rename.
+    """
+    from src.visualization import i18n
+
     header = getattr(model, "header", None)
-    title = theme.html(getattr(header, "title", None) or view_id)
-    subtitle = theme.html(getattr(header, "subtitle", "") or "")
+    title = getattr(header, "title", None) or view_id
+    subtitle = getattr(header, "subtitle", "") or ""
     return (
-        f'<h2 class="dt-app__title">{theme.html(view_id)} — {title}</h2>'
-        f'<p class="dt-muted">{subtitle}</p>'
+        f'<h2 class="dt-app__title"><span class="dt-mono">{theme.html(view_id)}</span> '
+        f"— {i18n.title_bi(str(title))}</h2>"
+        f'<p class="dt-muted">{i18n.title_bi(str(subtitle))}</p>'
     )
 
 
@@ -332,9 +342,10 @@ def build_ot_platform_document(
     :func:`src.visualization.ot_shell.build_ot_document` is handed :func:`build_view_section`
     as its renderer — the very dispatch :func:`build_document` uses. Every technical panel in
     the result is therefore the existing renderers' own output, embedded verbatim; the shell
-    adds tabs, bilingual explanations and a language switch, and computes nothing. A view that
-    raises fails the whole document (named, never substituted), exactly as ``build_document``
-    behaves.
+    adds tabs, bilingual explanations, a language switch and the simulated-playback bar, and
+    computes nothing (the embedded timeline is the renderers' own output, diffed per tick by
+    :func:`src.visualization.playback.build_timeline`). A view that raises fails the whole
+    document (named, never substituted), exactly as ``build_document`` behaves.
     """
     def _render(view_state: Any, view_id: str) -> tuple[Any, str]:
         return build_view_section(
@@ -347,6 +358,7 @@ def build_ot_platform_document(
         render_view=_render,
         theme_name=theme_name,
         meta=meta,
+        build_timeline=playback.build_timeline,
     )
 
 

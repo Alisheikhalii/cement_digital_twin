@@ -53,6 +53,13 @@ THEME_NAMES: Final[tuple[str, ...]] = (DARK, LIGHT)
 #: never filled with a zero a chart would draw as a real reading or a panel would total.
 NO_VALUE_TEXT: Final = "—"  # em dash
 
+#: The bilingual language-pair classes (:func:`src.visualization.i18n.bi` emits them; the
+#: visibility rules in :func:`stylesheet` switch them). Defined here — not in
+#: :mod:`src.visualization.i18n` — because the stylesheet is their single authority and
+#: ``i18n`` already imports this module (the reverse import would be circular).
+LANG_EN_CLASS: Final = "dt-en"
+LANG_FA_CLASS: Final = "dt-fa"
+
 
 @dataclass(frozen=True, slots=True)
 class Palette:
@@ -341,6 +348,8 @@ def stylesheet() -> str:
     light = _palette_vars(_LIGHT)
     toks = _token_vars(TOKENS)
     r = ROOT_CLASS
+    en = LANG_EN_CLASS
+    fa = LANG_FA_CLASS
     return f"""
 .{r}{{{toks}{dark}
   color:var(--dt-text);background:var(--dt-bg);
@@ -405,13 +414,30 @@ def stylesheet() -> str:
 .{r} .dt-banner--warn{{border-left-color:var(--dt-warn);}}
 .{r} .dt-banner--alarm{{border-left-color:var(--dt-alarm);}}
 
-/* table (readouts / requirements) */
+/* table (readouts / requirements) — global three-column stability (Executive Demo wave):
+   auto layout with controlled wrapping. `overflow-wrap:anywhere` on the mono identifier and
+   description spans lets a table's min-content width shrink below the longest tag, so a
+   readout table can never overflow its grid card and displace the Status column into the
+   neighbouring card; the tag span itself stays `<bdi>`-isolated (see i18n.tag_ref) so a
+   wrapped identifier is never bidi-scrambled. Cards carry min-width:0 so a grid track can
+   never be forced wider than the container by one card's content. */
+.{r} .dt-card{{min-width:0;}}
 .{r} table.dt-table{{border-collapse:collapse;width:100%;font-size:var(--dt-size-body);}}
 .{r} table.dt-table th,.{r} table.dt-table td{{text-align:left;padding:.4em .6em;
-  border-bottom:var(--dt-border-width) solid var(--dt-border);}}
+  border-bottom:var(--dt-border-width) solid var(--dt-border);vertical-align:top;
+  overflow-wrap:break-word;}}
+.{r} table.dt-table .dt-mono{{overflow-wrap:anywhere;}}
 .{r} table.dt-table th{{color:var(--dt-text-muted);font-weight:600;font-size:var(--dt-size-label);
   text-transform:uppercase;letter-spacing:.04em;}}
 .{r} table.dt-table td.dt-num{{font-family:var(--dt-font-mono);font-variant-numeric:tabular-nums;text-align:right;}}
+
+/* language state (Executive Demo wave): one rule pair switches every bilingual pair the
+   renderers emit (i18n.bi). Read from <html dir> — the same attribute the OT shell's
+   otSetLang writes — so the shell document and the standalone per-view exports share one
+   switch. `html:not([dir="rtl"])` (not `html[dir="ltr"]`) so a standalone document that
+   declares no direction at all also defaults to English. */
+html:not([dir="rtl"]) .{r} .{fa}{{display:none !important;}}
+html[dir="rtl"] .{r} .{en}{{display:none !important;}}
 """.strip()
 
 

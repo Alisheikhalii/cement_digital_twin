@@ -213,7 +213,8 @@ def test_prediction_grid_shows_every_configured_horizon_and_both_forecast_target
     """The full PRD 13.1 horizon set as columns (AC-16), one row per target the payload names."""
     html = intelligence_view.render_intelligence(_model(), settings=settings)
     for minutes in HORIZONS:
-        assert f"<th>t+{minutes}</th>" in html
+        # The Executive Demo wave gives the horizon headers a mono class; wording unchanged.
+        assert f'<th class="dt-mono">t+{minutes}</th>' in html
     assert "burning_zone_temperature" in html
     assert "oxygen_percent" in html
 
@@ -228,7 +229,9 @@ def test_predicted_values_and_spreads_are_the_payloads_own(
     assert "1,452" in html  # burning_zone_temperature at t+5
     assert "&plusmn; 6.100" in html  # its uncertainty, as a spread
     assert "3.210" in html  # oxygen_percent at t+5 (3 decimals)
-    assert "Model version: model-a-kiln-v1" in html  # PRD 13.4 provenance
+    # Bilingual label + bdi-isolated value: the English span keeps the PRD 13.4 wording.
+    assert "Model version:" in html
+    assert "model-a-kiln-v1" in html
 
 
 # =============================================================================
@@ -241,7 +244,8 @@ def test_the_grid_is_labelled_as_two_separate_channels(settings: DashboardSettin
     assert "Model prediction" in html  # the PREDICTION badge wording (PROVENANCE_LABELS)
     assert "dt-badge--prediction" in html
     assert "dt-badge--observed" in html
-    assert "<th>Current</th>" in html
+    # Bilingual header: the English span keeps the Current column's own word.
+    assert ">Current</span>" in html
 
 
 def theme_prediction_badge() -> str:
@@ -262,7 +266,9 @@ def test_the_anomaly_score_is_the_payloads_own_not_a_derived_one(
 ) -> None:
     """The PRD 17 view-7 "live anomaly score" is Model B's own number, shown as-is."""
     html = intelligence_view.render_intelligence(_model(), settings=settings)
-    assert "Anomaly score: -0.620" in html
+    # The Executive Demo wave renders the label bilingual; the English span keeps the words.
+    assert "Anomaly score:" in html
+    assert "-0.620" in html
 
 
 # =============================================================================
@@ -274,10 +280,10 @@ def test_missing_horizon_cells_show_the_payloads_reason_not_a_number(
     """A (target, horizon) pair the payload records in ``missing`` shows unavailable plus the
     untrained-model reason — the payload's own account — never a zero or a blank."""
     html = intelligence_view.render_intelligence(_model(), settings=settings)
-    assert (
-        f"{intelligence_view.UNAVAILABLE_TEXT} — {intelligence_view.MISSING_MODEL_TEXT}"
-        in html
-    )
+    # The Executive Demo wave renders each word bilingual; the English spans keep the wording.
+    assert f">{intelligence_view.UNAVAILABLE_TEXT}</span>" in html
+    assert " — <span" in html
+    assert f">{intelligence_view.MISSING_MODEL_TEXT}</span>" in html
     # All six recorded pairs are cells in the grid: oxygen's two, clinker's four.
     assert html.count(intelligence_view.MISSING_MODEL_TEXT) == len(MISSING)
 
@@ -333,9 +339,13 @@ def test_anomaly_warning_card_shows_the_prd_15_contract(
 ) -> None:
     html = intelligence_view.render_intelligence(_model(), settings=settings)
     assert "WARNING" in html
-    assert "<strong>Detected anomaly:</strong> Low Oxygen Condition" in html
+    # Bilingual labels: the English span keeps each PRD 15 wording, the value follows in a
+    # bdi playback anchor.
+    assert ">Detected anomaly:</span>" in html
+    assert ">Low Oxygen Condition</bdi>" in html
     assert labels.ANOMALY_HYPOTHESIS_LABEL in html  # the VERBATIM PRD 15 label
-    assert "<strong>Affected variables:</strong> oxygen_percent (low, z=-3.2)" in html
+    assert "Affected variables:" in html
+    assert "oxygen_percent (low, z=-3.2)" in html
     assert labels.RULE_BASED_SUGGESTION_LABEL in html  # the VERBATIM "not a diagnosis" label
     assert "Increase ID fan speed" in html
 
@@ -413,9 +423,11 @@ def test_the_inconclusive_cause_renders_as_the_label_not_a_regime(
     html = intelligence_view.render_intelligence(
         _model(anomaly=AnomalyState.from_report(_inconclusive_report())), settings=settings
     )
-    assert f"<strong>Detected anomaly:</strong> {labels.EVIDENCE_INCONCLUSIVE_LABEL}" in html
+    assert ">Detected anomaly:</span>" in html
+    assert f">{labels.EVIDENCE_INCONCLUSIVE_LABEL}</bdi>" in html
     # The signature still appears, under its own similarity-match label — not as the cause.
-    assert "Nearest regime signature (similarity match, not a cause): Sensor drift" in html
+    assert "Nearest regime signature (similarity match, not a cause): " in html
+    assert ">Sensor drift</bdi>" in html
 
 
 def test_a_classified_anomaly_keeps_the_regime_as_the_cause(
@@ -423,8 +435,10 @@ def test_a_classified_anomaly_keeps_the_regime_as_the_cause(
 ) -> None:
     """The non-inconclusive branch: the detected regime *is* the cause, with its similarity."""
     html = intelligence_view.render_intelligence(_model(), settings=settings)
-    assert "<strong>Detected anomaly:</strong> Low Oxygen Condition" in html
-    assert "Nearest regime signature (similarity match, not a cause): Low Oxygen Condition" in html
+    assert ">Detected anomaly:</span>" in html
+    assert ">Low Oxygen Condition</bdi>" in html
+    assert "Nearest regime signature (similarity match, not a cause): " in html
+    assert ">Low Oxygen Condition</bdi>" in html
     assert "cosine +0.910" in html
 
 

@@ -290,7 +290,9 @@ def test_a_missing_number_shows_the_absence_glyph_never_a_zero(
          _SPECIFIC[1]),
     )
     html = energy_view.render_energy(_model(specific=specific), settings=settings)
-    assert f">{theme.NO_VALUE_TEXT}</p>" in html
+    # The Executive Demo wave wraps the figure in a <bdi> playback anchor; the glyph (not a
+    # zero) property is unchanged.
+    assert f">{theme.NO_VALUE_TEXT}</bdi>" in html
     assert "807.9" not in html  # the absent figure is not rendered from anywhere
     assert 'dt-pill--unknown' in html  # the payload's own status word for an absent reading
 
@@ -426,7 +428,8 @@ def test_view_g_routes_to_the_renderer_in_build_document(
     settings: DashboardSettings,
 ) -> None:
     html, timings = app.build_document(StubState({"G": _model()}), ("G",), settings=settings)
-    assert "G — Energy Monitoring" in html
+    # The heading id sits in a <span class="dt-mono"> wrapper with the title as a bilingual pair.
+    assert 'G</span> — <span class="dt-en" dir="ltr">Energy Monitoring</span>' in html
     assert 'data-role="energy-pair"' in html
     assert "no renderer for this screen yet" not in html  # not the payload fallback
     assert list(timings) == ["G"]

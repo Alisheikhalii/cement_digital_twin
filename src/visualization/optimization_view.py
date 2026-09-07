@@ -41,7 +41,7 @@ from typing import Any, Final
 from src import labels
 from src.digital_twin.provenance import Provenance
 from src.optimization.optimizer import GATE_MODEL_AVAILABILITY
-from src.visualization import theme
+from src.visualization import i18n, theme
 
 #: What a baseline row that could not be built shows, followed by the row's own reason. Not a
 #: PRD-quoted string, so it lives here rather than in :mod:`src.labels`: that module is mandated
@@ -68,7 +68,7 @@ def _panel_style() -> str:
         "<style>.dt-opt{display:flex;flex-direction:column;gap:var(--dt-gap);}"
         ".dt-opt__badges{display:flex;flex-wrap:wrap;gap:.4em;align-items:center;}"
         ".dt-opt__grid{display:grid;gap:var(--dt-gap);"
-        "grid-template-columns:repeat(auto-fill,minmax(210px,1fr));}"
+        "grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));}"
         "</style>"
     )
 
@@ -86,8 +86,10 @@ def _badge(text: object, kind: str) -> str:
     return f'<span class="dt-badge dt-badge--{kind}">{theme.html(text)}</span>'
 
 
-def _pill(text: object, kind: str) -> str:
-    return f'<span class="dt-pill dt-pill--{kind}">{theme.html(text)}</span>'
+def _pill(text: object, kind: str, *, key: str | None = None) -> str:
+    """A status/state pill, optionally carrying a playback anchor (``data-otk``)."""
+    anchor = f' data-otk="{theme.html(key)}"' if key else ""
+    return f'<span class="dt-pill dt-pill--{kind}"{anchor}>{text}</span>'
 
 
 # =============================================================================
@@ -111,7 +113,8 @@ def _status_strip(view: Any) -> str:
     stamp = f"{view.mode} · {view.timestamp}"
     return (
         f'<div class="dt-opt__badges">{"".join(pills)}'
-        f'<span class="dt-mono dt-muted">{theme.html(stamp)}</span></div>'
+        f'<span class="dt-mono dt-muted"><bdi data-otk="{i18n.STAMP_KEY}">'
+        f"{theme.html(stamp)}</bdi></span></div>"
     )
 
 
@@ -121,7 +124,7 @@ def _status_strip(view: Any) -> str:
 def _unavailable_panel(view: Any) -> str:
     return (
         '<div class="dt-card dt-card--alt">'
-        f'<h3 class="dt-title">{theme.html(labels.MODEL_UNAVAILABLE_LABEL)}</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi(labels.MODEL_UNAVAILABLE_LABEL)}</h3>'
         f'<p>{theme.html(view.unavailable_reason or labels.MODEL_UNAVAILABLE_STATEMENT)}</p>'
         "</div>"
     )
@@ -135,14 +138,16 @@ def _refusal_panel(view: Any) -> str:
     reasons = "".join(f"<li>{theme.html(reason)}</li>" for reason in view.refusal_reasons)
     return (
         '<div class="dt-card dt-card--alt" data-role="refusal">'
-        f'<h3 class="dt-title">{theme.html(labels.NO_SAFE_RECOMMENDATION)}</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi(labels.NO_SAFE_RECOMMENDATION)}</h3>'
         f"<p>{theme.html(view.message)}</p>"
         + (f"<ul>{reasons}</ul>" if reasons else "")
         + (
             '<p class="dt-muted">'
-            f"{theme.html(int(view.evaluated))} candidate(s) evaluated, "
-            f"{theme.html(int(view.rejected_candidates))} rejected by the gates. "
-            "The constraints were not relaxed to manufacture a recommendation."
+            f"{theme.html(int(view.evaluated))} "
+            f'{i18n.title_bi("candidate(s) evaluated")} '
+            f"{theme.html(int(view.rejected_candidates))} "
+            f'{i18n.title_bi("rejected by the gates. ")}'
+            f'{i18n.title_bi("The constraints were not relaxed to manufacture a recommendation.")}'
             "</p>"
         )
         + "</div>"
@@ -169,8 +174,10 @@ def _gates_table(view: Any) -> str:
         )
     return (
         '<div class="dt-card">'
-        '<h3 class="dt-title">Gates (PRD 14.3, in evaluation order)</h3>'
-        '<table class="dt-table"><thead><tr><th>Gate</th><th>Verdict</th><th>Reason</th></tr>'
+        f'<h3 class="dt-title">{i18n.title_bi("Gates (PRD 14.3, in evaluation order)")}</h3>'
+        '<table class="dt-table"><thead>'
+        f'<tr><th>{i18n.title_bi("Gate")}</th><th>{i18n.title_bi("Verdict")}</th>'
+        f'<th>{i18n.title_bi("Reason")}</th></tr>'
         f"</thead><tbody>{''.join(rows)}</tbody></table>"
         "</div>"
     )
@@ -200,8 +207,9 @@ def _impact_table(impact: Mapping[str, Any], fmt: Any) -> str:
         )
     )
     return (
-        '<table class="dt-table"><thead><tr><th>Metric</th><th>Baseline</th><th>Proposed</th>'
-        "<th>&Delta;</th><th>&Delta;&nbsp;%</th></tr></thead>"
+        '<table class="dt-table"><thead>'
+        f'<tr><th>{i18n.title_bi("Metric")}</th><th>{i18n.title_bi("Baseline")}</th>'
+        f'<th>{i18n.title_bi("Proposed")}</th><th>&Delta;</th><th>&Delta;&nbsp;%</th></tr></thead>'
         f"<tbody>{''.join(rows)}</tbody></table>{totals}"
     )
 
@@ -218,8 +226,10 @@ def _setpoints_table(rec: Mapping[str, Any], fmt: Any) -> str:
     if not rows:
         return ""
     return (
-        '<table class="dt-table"><thead><tr><th>Setpoint</th><th>Current</th><th>Proposed</th>'
-        f"</tr></thead><tbody>{rows}</tbody></table>"
+        '<table class="dt-table"><thead>'
+        f'<tr><th>{i18n.title_bi("Setpoint")}</th><th>{i18n.title_bi("Current")}</th>'
+        f'<th>{i18n.title_bi("Proposed")}</th></tr></thead>'
+        f"<tbody>{rows}</tbody></table>"
     )
 
 
@@ -248,14 +258,18 @@ def _recommendation_card(rec: Mapping[str, Any], fmt: Any) -> str:
     )
     return (
         '<div class="dt-card" data-role="recommendation">'
-        f'<h3 class="dt-title">{theme.html(labels.AI_RECOMMENDATION_LABEL)} — '
+        f'<h3 class="dt-title">{i18n.title_bi(labels.AI_RECOMMENDATION_LABEL)} — '
         f'{theme.html(rec.get("label", ""))}</h3>'
         f'<p>{theme.html(rec.get("reason", ""))}</p>'
         + (f'<p class="dt-muted">{gloss}</p>' if gloss else "")
         + banner_html
-        + f'<h3 class="dt-title">Recommended setpoints</h3>{_setpoints_table(rec, fmt)}'
-        + (f'<h3 class="dt-title">Expected impact ({theme.html(labels.SIMULATED_RESULT_LABEL)})'
-           "</h3>" if impact_html else "")
+        + f'<h3 class="dt-title">{i18n.title_bi("Recommended setpoints")}</h3>'
+        + _setpoints_table(rec, fmt)
+        + (
+            f'<h3 class="dt-title">{i18n.title_bi("Expected impact")}</h3>'
+            if impact_html
+            else ""
+        )
         + impact_html
         + caveat_html
         + "</div>"
@@ -299,7 +313,8 @@ def _baselines_table(baselines: Mapping[str, Any], fmt: Any) -> str:
             )
     caveat = str(baselines.get("caveat", "") or "")
     return (
-        '<table class="dt-table"><thead><tr><th>Baseline (PRD 14.5)</th><th>Source</th>'
+        '<table class="dt-table"><thead>'
+        f'<tr><th>{i18n.title_bi("Baseline (PRD 14.5)")}</th><th>{i18n.title_bi("Source")}</th>'
         f"{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
         + (f'<div class="dt-banner">{theme.html(caveat)}</div>' if caveat else "")
     )
@@ -308,20 +323,24 @@ def _baselines_table(baselines: Mapping[str, Any], fmt: Any) -> str:
 def _baselines_section(baselines: Mapping[str, Any] | None, fmt: Any) -> str:
     """The comparison, or the honest statement that this run built none."""
     if baselines is None:
+        absent = i18n.title_bi(
+            "the optimizer ran without building the baseline comparison for this request. "
+            "No baseline numbers are shown rather than substituted ones."
+        )
         return (
             '<div class="dt-card">'
-            '<h3 class="dt-title">Baseline comparison (PRD 14.5)</h3>'
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_ROW_TEXT)}: the optimizer ran without '
-            "building the baseline comparison for this request. No baseline numbers are shown "
-            "rather than substituted ones.</p></div>"
+            f'<h3 class="dt-title">{i18n.title_bi("Baseline comparison (PRD 14.5)")}</h3>'
+            f'<p class="dt-muted">{theme.html(UNAVAILABLE_ROW_TEXT)}: {absent}</p></div>'
         )
     missing = ", ".join(str(name) for name in baselines.get("missing", ()))
     note = (
-        f'<p class="dt-muted">Missing rows: {theme.html(missing)}.</p>' if missing else ""
+        f'<p class="dt-muted">{i18n.title_bi("Missing rows")}: {theme.html(missing)}.</p>'
+        if missing
+        else ""
     )
     return (
         '<div class="dt-card" data-role="baselines">'
-        '<h3 class="dt-title">Baseline comparison (PRD 14.5, identical process conditions)</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Baseline comparison (PRD 14.5, identical process conditions)")}</h3>'
         f"{_baselines_table(baselines, fmt)}{note}</div>"
     )
 
@@ -444,7 +463,8 @@ def _horizon_table(view: Any, fmt: Any) -> str:
                 cells.append(_prediction_cell(entry, fmt))
         body_rows.append(f"<tr>{title_cell}{''.join(cells)}</tr>")
     return (
-        '<table class="dt-table"><thead><tr><th>Target</th>'
+        '<table class="dt-table"><thead>'
+        f'<tr><th>{i18n.title_bi("Target")}</th>'
         f"{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
     )
 
@@ -458,23 +478,28 @@ def _horizon_section(view: Any, fmt: Any) -> str:
     """
     predicted = view.predicted_states()
     if not predicted:
+        absent = i18n.title_bi(
+            "this recommendation carries no Model A horizon predictions. No predicted values "
+            "are shown rather than substituted ones."
+        )
         return (
             '<div class="dt-card" data-role="horizons">'
-            '<h3 class="dt-title">Predicted state by horizon (Model A)</h3>'
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_ROW_TEXT)}: this recommendation '
-            "carries no Model A horizon predictions. No predicted values are shown rather than "
-            "substituted ones.</p></div>"
+            f'<h3 class="dt-title">{i18n.title_bi("Predicted state by horizon (Model A)")}</h3>'
+            f'<p class="dt-muted">{theme.html(UNAVAILABLE_ROW_TEXT)}: {absent}</p></div>'
         )
+    note = i18n.title_bi(
+        "Model A prediction of the recommended operating point — the prediction channel, kept "
+        "separate from the observed values of the baseline comparison. The &plusmn; figure is "
+        "the model's own ensemble spread (PRD 13.1.1), shown as a spread and never as a "
+        "percentage."
+    )
     return (
         '<div class="dt-card" data-role="horizons">'
-        '<h3 class="dt-title">Predicted state by horizon (Model A) '
+        f'<h3 class="dt-title">{i18n.title_bi("Predicted state by horizon (Model A)")} '
         f'{_badge(theme.provenance_label(Provenance.PREDICTION), theme.provenance_slug(Provenance.PREDICTION))}'
         "</h3>"
         f"{_horizon_table(view, fmt)}"
-        '<p class="dt-muted">Model A prediction of the recommended operating point — the '
-        "prediction channel, kept separate from the observed values of the baseline comparison. "
-        "The &plusmn; figure is the model's own ensemble spread (PRD 13.1.1), shown as a "
-        "spread and never as a percentage.</p></div>"
+        f'<p class="dt-muted">{note}</p></div>'
     )
 
 

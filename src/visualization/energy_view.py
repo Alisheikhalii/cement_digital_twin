@@ -39,7 +39,7 @@ from typing import Any, Final
 
 from src import labels
 from src.digital_twin.provenance import Provenance
-from src.visualization import theme
+from src.visualization import i18n, theme
 
 #: What a card that has nothing to render shows. Same wording as the view A / H / J renderers,
 #: so all four state absence the same way; the renderer's own word (not PRD-quoted), kept out of
@@ -48,22 +48,29 @@ UNAVAILABLE_TEXT: Final = "unavailable"
 
 
 def _panel_style() -> str:
-    """Scoped layout CSS for the panel. Geometry only — colours and type come from the theme."""
+    """Scoped layout CSS for the panel. Geometry only — colours and type come from the theme.
+
+    ``minmax(min(13em,100%),1fr)`` (and the 26em/12em cousins) — the Executive-Demo global grid
+    fix: the capped floor lets each grid shrink inside a narrow tab instead of overflowing it
+    (see :func:`src.visualization.process_view._panel_style`).
+    """
     return (
         "<style>.dt-en{display:flex;flex-direction:column;gap:var(--dt-gap);}"
         ".dt-en__badges{display:flex;flex-wrap:wrap;gap:.4em;align-items:center;}"
-        ".dt-en__kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(13em,1fr));"
+        ".dt-en__kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(13em,100%),1fr));"
         "gap:var(--dt-gap);}"
-        ".dt-en__pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(26em,1fr));"
+        ".dt-en__pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(26em,100%),1fr));"
         "gap:var(--dt-gap);}"
-        ".dt-en__cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(12em,1fr));"
+        ".dt-en__cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12em,100%),1fr));"
         "gap:var(--dt-gap);}"
         "</style>"
     )
 
 
-def _pill(text: object, kind: str) -> str:
-    return f'<span class="dt-pill dt-pill--{kind}">{theme.html(text)}</span>'
+def _pill(text: object, kind: str, *, key: str | None = None) -> str:
+    """A status pill, optionally carrying a playback anchor (``data-otk``)."""
+    anchor = f' data-otk="{theme.html(key)}"' if key else ""
+    return f'<span class="dt-pill dt-pill--{kind}"{anchor}>{text}</span>'
 
 
 def _badge(text: object, kind: str) -> str:
@@ -78,22 +85,24 @@ def _provenance_badge(provenance: Provenance) -> str:
 # The KPI card — one payload Value, the payload's own number, status and source
 # =============================================================================
 def _value_card(value: Any, fmt: Any) -> str:
-    """One energy / production / KPI card: the payload's own number, status colour and source.
+    """One energy / production / KPI card: the payload's own number, status colour and tag.
 
-    The title is the tag's own schema description (the wording ``value_from_tag`` read from
-    :mod:`src.schema`), with the tag itself in muted mono beneath so every number stays
-    traceable to its source (NFR-6). The status pill is the value's own banded status — this
-    renderer bands nothing. A missing number shows the absence glyph, never a zero.
+    Bilingual via :func:`i18n.tag_title` / :func:`i18n.tag_ref` (the tag's own schema
+    description with its Persian entry, the canonical identifier as the secondary technical
+    reference) so every number stays traceable to its source (NFR-6). The status pill is the
+    value's own banded status — this renderer bands nothing. A missing number shows the
+    absence glyph, never a zero. The per-card provenance badge is gone by the wave's
+    provenance rule (once per screen, not per card).
     """
-    title = value.description or value.tag
     number = theme.value_text(value, fmt)
     return (
         '<div class="dt-card" data-role="energy-kpi">'
-        f'<h3 class="dt-title">{theme.html(title)}</h3>'
-        f'<div class="dt-en__badges">{_pill(value.status, theme.status_slug(value.status))}'
-        f"{_provenance_badge(value.provenance)}</div>"
-        f'<p class="dt-mono" style="font-size:1.3em">{theme.html(number)}</p>'
-        f'<p class="dt-mono dt-muted">{theme.html(value.tag)}</p>'
+        f'<h3 class="dt-title">{i18n.tag_title(value)}</h3>'
+        f'<div class="dt-en__badges">'
+        f'{_pill(i18n.status_bi(value.status), theme.status_slug(value.status), key=i18n.status_key(value.tag))}</div>'
+        f'<p class="dt-mono" style="font-size:1.3em">'
+        f'<bdi data-otk="{i18n.value_key(value.tag)}">{theme.html(number)}</bdi></p>'
+        f'<p class="dt-mono dt-muted">{i18n.tag_ref(value.tag)}</p>'
         "</div>"
     )
 
@@ -107,15 +116,12 @@ def _panel_block(panel: Any, fmt: Any, *, empty_subject: str) -> str:
     """One partitioned panel: its own title, its own cards, or the stated absence.
 
     An empty panel (a provider that answered none of this partition's tags) is stated with its
-    subject named — no card is invented to fill the space, and the emptiness of one partition
-    never hides the others.
+    subject named (:func:`i18n.provider_empty_bi`) — no card is invented to fill the space,
+    and the emptiness of one partition never hides the others.
     """
     cards = _cards(tuple(panel.values), fmt)
     if not cards:
-        cards = (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this provider carries no '
-            f"{theme.html(empty_subject)}. No value is invented to fill the space.</p>"
-        )
+        cards = f'<p class="dt-muted">{i18n.provider_empty_bi(empty_subject)}</p>'
     return f'<div class="dt-en__cards">{cards}</div>'
 
 
@@ -141,14 +147,14 @@ def _energy_pair_section(specific: Any, total: Any, production: Any, fmt: Any) -
     """
     return (
         '<div class="dt-card dt-card--alt" data-role="energy-pair">'
-        '<h3 class="dt-title">Specific energy vs total energy</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Specific energy vs total energy")}</h3>'
         '<div class="dt-en__pair">'
-        f'<div><h4 class="dt-title">{theme.html(specific.title)}</h4>'
+        f'<div><h4 class="dt-title">{i18n.title_bi(specific.title)}</h4>'
         f"{_panel_block(specific, fmt, empty_subject='specific-energy figures')}</div>"
-        f'<div><h4 class="dt-title">{theme.html(total.title)}</h4>'
+        f'<div><h4 class="dt-title">{i18n.title_bi(total.title)}</h4>'
         f"{_panel_block(total, fmt, empty_subject='daily-total figures')}</div>"
         "</div>"
-        f'<div><h4 class="dt-title">{theme.html(production.title)}</h4>'
+        f'<div><h4 class="dt-title">{i18n.title_bi(production.title)}</h4>'
         f"{_panel_block(production, fmt, empty_subject='production rates')}</div>"
         f"{_note_html(specific.note or total.note)}"
         "</div>"
@@ -166,14 +172,11 @@ def _kpi_group_section(group: Any, fmt: Any, *, role: str) -> str:
     """
     cards = _cards(tuple(group.values), fmt)
     if not cards:
-        cards = (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this provider carries no '
-            f"{theme.html(group.title)} KPI group. No card is invented to fill the space.</p>"
-        )
+        cards = f'<p class="dt-muted">{i18n.kpi_group_empty_bi(group.title)}</p>'
     note = _note_html(group.note)
     return (
         f'<div class="dt-card" data-role="{role}">'
-        f'<h3 class="dt-title">{theme.html(group.title)} KPIs</h3>'
+        f'<h3 class="dt-title">{i18n.kpi_group_title(group.title)}</h3>'
         f'<div class="dt-en__kpis">{cards}</div>{note}</div>'
     )
 
@@ -195,16 +198,18 @@ def render_energy(model: Any, *, settings: Any, theme_name: str = theme.DARK) ->
     """
     fmt = settings.format
     stamp = model.header.timestamp if getattr(model, "header", None) is not None else ""
+    # One screen-level provenance badge (the wave's provenance rule): every reading on this
+    # screen is OBSERVED, so the channel is stated once here — not once per card. The simulated /
+    # not-validated wording lives once per document (the shell's global disclosure).
     badges = [
-        _badge(labels.SIMULATED_RESULT_LABEL, "configuration"),
-        _badge(labels.NOT_VALIDATED_LABEL, "configuration"),
+        _provenance_badge(Provenance.OBSERVED),
     ]
     return (
         f'<div class="{theme.theme_class(theme_name)}">'
         f"{_panel_style()}"
         '<div class="dt-en">'
         f'<div class="dt-en__badges">{"".join(badges)}'
-        f'<span class="dt-mono dt-muted">{theme.html(stamp)}</span></div>'
+        f'<span class="dt-mono dt-muted"><bdi data-otk="{i18n.STAMP_KEY}">{theme.html(stamp)}</bdi></span></div>'
         f"{_energy_pair_section(model.specific, model.total, model.production, fmt)}"
         f"{_kpi_group_section(model.kiln, fmt, role='energy-kiln')}"
         f"{_kpi_group_section(model.mill, fmt, role='energy-mill')}"

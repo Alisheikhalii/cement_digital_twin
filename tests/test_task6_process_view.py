@@ -410,7 +410,9 @@ def test_a_missing_number_shows_the_absence_glyph_never_a_zero(
     html = process_view.render_process(
         StubProcessView(components=(detail,)), settings=settings
     )
-    assert f">{theme.NO_VALUE_TEXT}</td>" in html
+    # The Executive Demo wave wraps the value in a <bdi> playback anchor, so the glyph sits
+    # before the </bdi> rather than the </td>; the property (glyph, never a zero) is unchanged.
+    assert f">{theme.NO_VALUE_TEXT}</bdi>" in html
     assert "190.0" in html  # the present reading keeps its number
 
 
@@ -590,7 +592,8 @@ def test_views_c_d_and_f_route_to_the_renderer_in_build_document(
     for view_id, marker in (
         ("C", "Preheater"), ("D", "Clinker cooler"), ("F", "Dynamic separator"),
     ):
-        assert f"{view_id} — " in html
+        # The heading id sits in a <span class="dt-mono"> wrapper before the bilingual title pair.
+        assert f">{view_id}</span> — " in html
         assert marker in html, f"view {view_id} must render its own component {marker!r}"
     assert "no renderer for this screen yet" not in html  # not the payload fallback
     assert list(timings) == ["C", "D", "F"]

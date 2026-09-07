@@ -40,7 +40,7 @@ from typing import Any, Final
 
 from src import labels
 from src.digital_twin.provenance import Provenance, Value
-from src.visualization import theme
+from src.visualization import i18n, theme
 
 #: What a stage's rate readout shows when the payload carries no ``Value`` for it — the honest
 #: absence glyph, never a zero that would read as a stopped-but-measured line.
@@ -69,7 +69,12 @@ _STATUS_PILL: Final[dict[str, str]] = {"NORMAL": "ok", "WARNING": "warn", "ALARM
 
 
 def _panel_style() -> str:
-    """Scoped layout CSS for the panel. Geometry only — colours and type come from the theme."""
+    """Scoped layout CSS for the panel. Geometry only — colours and type come from the theme.
+
+    ``minmax(min(13em,100%),1fr)`` on the KPI grid — the same Executive-Demo global grid fix
+    the other renderers carry (see :func:`src.visualization.process_view._panel_style`): the
+    capped floor lets the grid shrink inside a narrow tab instead of overflowing it.
+    """
     return (
         "<style>.dt-ov{display:flex;flex-direction:column;gap:var(--dt-gap);}"
         ".dt-ov__badges{display:flex;flex-wrap:wrap;gap:.4em;align-items:center;}"
@@ -77,7 +82,7 @@ def _panel_style() -> str:
         ".dt-ov__arrow{display:flex;align-items:center;color:var(--dt-accent-alt);"
         "font-size:1.4em;padding:0 .1em;}"
         ".dt-ov__stage{flex:1 1 11em;max-width:16em;}"
-        ".dt-ov__kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(13em,1fr));"
+        ".dt-ov__kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(13em,100%),1fr));"
         "gap:var(--dt-gap);}"
         ".dt-ov__chips{display:flex;flex-wrap:wrap;gap:.3em;margin-top:.3em;}"
         ".dt-ov__chip{font-size:.85em;}"
@@ -85,8 +90,10 @@ def _panel_style() -> str:
     )
 
 
-def _pill(text: object, kind: str) -> str:
-    return f'<span class="dt-pill dt-pill--{kind}">{theme.html(text)}</span>'
+def _pill(text: object, kind: str, *, key: str | None = None) -> str:
+    """A status/state pill, optionally carrying a playback anchor (``data-otk``)."""
+    anchor = f' data-otk="{theme.html(key)}"' if key else ""
+    return f'<span class="dt-pill dt-pill--{kind}"{anchor}>{text}</span>'
 
 
 def _badge(text: object, kind: str) -> str:
@@ -110,16 +117,17 @@ def _rate_readout(rate: Value | None, fmt: Any) -> str:
     if rate is None:
         return f'<p class="dt-mono">{_NO_RATE}</p>'
     return (
-        f'<p class="dt-mono">{theme.html(theme.value_text(rate, fmt))}'
+        f'<p class="dt-mono"><bdi data-otk="{i18n.value_key(rate.tag)}">'
+        f"{theme.html(theme.value_text(rate, fmt))}</bdi>"
         f' <span class="dt-muted">/ h</span></p>'
     )
 
 
 def _equipment_chip(item: Any) -> str:
-    """One PRD 8.3 component as a name + state chip, in the payload's own words."""
+    """One PRD 8.3 component as a name + state chip — name canonical, state bilingual."""
     return (
         f'<span class="dt-ov__chip">{theme.html(item.name)} '
-        f'<span class="dt-muted">{theme.html(item.state)}</span></span>'
+        f'<span class="dt-muted">{i18n.state_bi(item.state)}</span></span>'
     )
 
 
@@ -127,10 +135,13 @@ def _stage_card(stage: Any, fmt: Any) -> str:
     """One stage of the chain: its state, its rate, and the equipment it groups.
 
     The state pill is the payload's own word (RUNNING / IDLE / UNKNOWN, item 3's throughput
-    test); ``moving`` is deliberately not shown as a second status — the twin renders motion,
-    this screen renders the state word the same test produced. Equipment the stage groups is
-    listed with each item's own state, so "equipment state changes" (item 4's phrase) is
-    legible here too, as text rather than animation.
+    test), bilingual via :func:`i18n.state_bi` and anchored for playback (``g:{name}`` — the
+    stage's canonical layout name); ``moving`` is deliberately not shown as a second status —
+    the twin renders motion, this screen renders the state word the same test produced.
+    Equipment the stage groups is listed with each item's own state, so "equipment state
+    changes" (item 4's phrase) is legible here too, as text rather than animation. The
+    stage-card provenance badge is gone by the wave's provenance rule: the channel is stated
+    once per screen (see :func:`render_overview`), not once per stage.
     """
     chips = (
         f'<div class="dt-ov__chips">{"".join(_equipment_chip(item) for item in stage.equipment)}</div>'
@@ -139,11 +150,11 @@ def _stage_card(stage: Any, fmt: Any) -> str:
     )
     return (
         '<div class="dt-card dt-ov__stage" data-role="stage">'
-        f'<h3 class="dt-title">{theme.html(stage.title)}</h3>'
-        f'<div class="dt-ov__badges">{_pill(stage.state, _STAGE_PILL.get(str(stage.state), "unknown"))}'
-        f"{_provenance_badge(stage.rate.provenance if stage.rate else Provenance.OBSERVED)}</div>"
+        f'<h3 class="dt-title">{i18n.title_bi(stage.title)}</h3>'
+        f'<div class="dt-ov__badges">'
+        f'{_pill(i18n.state_bi(stage.state), _STAGE_PILL.get(str(stage.state), "unknown"), key=i18n.stage_state_key(stage.name))}</div>'
         f"{_rate_readout(stage.rate, fmt)}"
-        f'<p class="dt-muted">{theme.html(stage.detail)}</p>'
+        f'<p class="dt-muted">{i18n.title_bi(stage.detail)}</p>'
         f"{chips}"
         "</div>"
     )
@@ -158,7 +169,7 @@ def _chain_section(stages: tuple[Any, ...], fmt: Any) -> str:
         parts.append(_stage_card(stage, fmt))
     return (
         '<div class="dt-card dt-card--alt" data-role="chain">'
-        '<h3 class="dt-title">Plant overview chain</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Plant overview chain")}</h3>'
         f'<div class="dt-ov__chain">{"".join(parts)}</div></div>'
     )
 
@@ -167,22 +178,24 @@ def _chain_section(stages: tuple[Any, ...], fmt: Any) -> str:
 # Items 9 / 12 — the plant KPI group (specific and total energy, never one alone)
 # =============================================================================
 def _kpi_card(value: Value, fmt: Any) -> str:
-    """One plant KPI card: the payload's own number, status colour and provenance.
+    """One plant KPI card: the payload's own number, status colour and tag — bilingual.
 
-    The title is the tag's own schema description (the wording ``value_from_tag`` read from
-    :mod:`src.schema`), with the tag itself in muted mono beneath so every number stays
-    traceable to its source (NFR-6). The status pill is the value's own banded status — this
-    renderer bands nothing. A missing number shows the absence glyph, never a zero.
+    The title is the tag's own schema description with its Persian entry
+    (:func:`i18n.tag_title`), the canonical tag beneath as the secondary technical reference
+    (:func:`i18n.tag_ref`) so every number stays traceable to its source (NFR-6). The status
+    pill is the value's own banded status — this renderer bands nothing. A missing number
+    shows the absence glyph, never a zero. The per-card provenance badge is gone by the
+    wave's provenance rule (once per screen, not per card).
     """
-    title = value.description or value.tag
     number = theme.value_text(value, fmt)
     return (
         '<div class="dt-card" data-role="kpi">'
-        f'<h3 class="dt-title">{theme.html(title)}</h3>'
-        f'<div class="dt-ov__badges">{_pill(value.status, theme.status_slug(value.status))}'
-        f"{_provenance_badge(value.provenance)}</div>"
-        f'<p class="dt-mono" style="font-size:1.3em">{theme.html(number)}</p>'
-        f'<p class="dt-mono dt-muted">{theme.html(value.tag)}</p>'
+        f'<h3 class="dt-title">{i18n.tag_title(value)}</h3>'
+        f'<div class="dt-ov__badges">'
+        f'{_pill(i18n.status_bi(value.status), theme.status_slug(value.status), key=i18n.status_key(value.tag))}</div>'
+        f'<p class="dt-mono" style="font-size:1.3em">'
+        f'<bdi data-otk="{i18n.value_key(value.tag)}">{theme.html(number)}</bdi></p>'
+        f'<p class="dt-mono dt-muted">{i18n.tag_ref(value.tag)}</p>'
         "</div>"
     )
 
@@ -199,15 +212,16 @@ def _kpi_section(plant: Any, fmt: Any) -> str:
     cards = "".join(_kpi_card(value, fmt) for value in plant.values) if plant.values else ""
     if not cards:
         cards = (
-            f'<p class="dt-muted">{theme.html(UNAVAILABLE_TEXT)}: this provider carries no '
-            "plant KPI group. No production or energy card is invented to fill the space.</p>"
+            '<p class="dt-muted">'
+            f'{i18n.title_bi("unavailable: this provider carries no plant KPI group. No production or energy card is invented to fill the space.")}'
+            "</p>"
         )
     note = (
         f'<p class="dt-muted">{theme.html(plant.note)}</p>' if plant.note else ""
     )
     return (
         '<div class="dt-card dt-card--alt" data-role="kpis">'
-        '<h3 class="dt-title">Plant KPIs</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi("Plant KPIs")}</h3>'
         f'<div class="dt-ov__kpis">{cards}</div>{note}</div>'
     )
 
@@ -231,7 +245,7 @@ def _status_tile(status: Any) -> str:
         kind = "ok"
     return (
         '<div class="dt-card" data-role="status-tile">'
-        f'<h3 class="dt-title">{theme.html(status.title)}</h3>'
+        f'<h3 class="dt-title">{i18n.title_bi(status.title)}</h3>'
         f'<div class="dt-ov__badges">{_pill(status.status, kind)}'
         f"{_provenance_badge(status.provenance)}</div>"
         f"<p>{theme.html(status.detail)}</p>"
@@ -242,11 +256,11 @@ def _status_tile(status: Any) -> str:
 def _status_section(ai_status: Any, anomaly_status: Any) -> str:
     return (
         '<div class="dt-card dt-card--alt" data-role="status">'
-        "<h3 class=\"dt-title\">AI &amp; anomaly status</h3>"
+        f'<h3 class="dt-title">{i18n.title_bi("AI & anomaly status")}</h3>'
         f'<div class="dt-ov__kpis">{_status_tile(ai_status)}{_status_tile(anomaly_status)}</div>'
-        '<p class="dt-muted">One-line summaries of the AI Prediction &amp; Anomaly screen (view '
-        "H) and the AI Optimization screen (view J) at this instant — the same payloads those "
-        "screens render, not a second computation. The full cards live there.</p></div>"
+        '<p class="dt-muted">'
+        f'{i18n.title_bi("One-line summaries of the AI Prediction & Anomaly screen (view H) and the AI Optimization screen (view J) at this instant — the same payloads those screens render, not a second computation. The full cards live there.")}'
+        "</p></div>"
     )
 
 
@@ -267,16 +281,19 @@ def render_overview(model: Any, *, settings: Any, theme_name: str = theme.DARK) 
     """
     fmt = settings.format
     stamp = model.header.timestamp if getattr(model, "header", None) is not None else ""
+    # One screen-level provenance badge (the wave's provenance rule): every process reading on
+    # this screen is OBSERVED, so the channel is stated once here — not once per card. The
+    # simulated / not-validated wording lives once per document (the shell's global disclosure),
+    # not once per screen.
     badges = [
-        _badge(labels.SIMULATED_RESULT_LABEL, "configuration"),
-        _badge(labels.NOT_VALIDATED_LABEL, "configuration"),
+        _provenance_badge(Provenance.OBSERVED),
     ]
     return (
         f'<div class="{theme.theme_class(theme_name)}">'
         f"{_panel_style()}"
         '<div class="dt-ov">'
         f'<div class="dt-ov__badges">{"".join(badges)}'
-        f'<span class="dt-mono dt-muted">{theme.html(stamp)}</span></div>'
+        f'<span class="dt-mono dt-muted"><bdi data-otk="{i18n.STAMP_KEY}">{theme.html(stamp)}</bdi></span></div>'
         f"{_chain_section(tuple(model.stages), fmt)}"
         f"{_kpi_section(model.plant, fmt)}"
         f"{_status_section(model.ai_status, model.anomaly_status)}"
