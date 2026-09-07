@@ -41,7 +41,7 @@ from typing import Any, Final
 from src import labels
 from src.digital_twin.provenance import Provenance
 from src.optimization.optimizer import GATE_MODEL_AVAILABILITY
-from src.visualization import i18n, theme
+from src.visualization import i18n, opt_l10n, theme
 
 #: What a baseline row that could not be built shows, followed by the row's own reason. Not a
 #: PRD-quoted string, so it lives here rather than in :mod:`src.labels`: that module is mandated
@@ -96,19 +96,45 @@ def _pill(text: object, kind: str, *, key: str | None = None) -> str:
 # The status strip — what ran, in which mode, from which channel (item 1)
 # =============================================================================
 def _status_strip(view: Any) -> str:
-    """Badges every rendering of view J carries: the run's identity, mode and provenance."""
+    """Badges every rendering of view J carries: the run's identity, mode and provenance.
+
+    The pill words (mode, quality, envelope status) are canonical payload values; their Persian
+    display forms come from :mod:`opt_l10n`'s dictionaries, and the canonical value itself is
+    preserved as the ``<bdi>``-isolated secondary reference inside the Persian element.
+    """
+    mode = str(view.mode)
+    mode_fa = opt_l10n.MODE_FA.get(mode, mode)
     pills: list[str] = [
         _badge(labels.AI_RECOMMENDATION_LABEL, "recommendation"),
         _badge(theme.provenance_label(view.provenance), theme.provenance_slug(view.provenance)),
-        _pill(view.mode, "unknown" if view.mode not in labels.OPTIMIZATION_MODE_VALUES else "ok"),
+        _pill(
+            f'<span class="{theme.LANG_EN_CLASS}" dir="ltr">{theme.html(mode)}</span>'
+            f'<span class="{theme.LANG_FA_CLASS}" dir="rtl" lang="fa">'
+            f"{theme.html(mode_fa)} (<bdi>{theme.html(mode)}</bdi>)</span>",
+            "unknown" if mode not in labels.OPTIMIZATION_MODE_VALUES else "ok",
+        ),
     ]
     rec = view.recommendation() if view.available else None
     if rec is not None:
         quality = str(rec.get("recommendation_quality", ""))
-        pills.append(_pill(quality, _QUALITY_PILL.get(quality, "unknown")))
-        envelope = str(rec.get("envelope_status", ""))
+        quality_fa = opt_l10n.QUALITY_FA.get(quality, quality)
         pills.append(
-            _pill(envelope, "alarm" if envelope == "OUTSIDE_ENVELOPE" else "ok")
+            _pill(
+                f'<span class="{theme.LANG_EN_CLASS}" dir="ltr">{theme.html(quality)}</span>'
+                f'<span class="{theme.LANG_FA_CLASS}" dir="rtl" lang="fa">'
+                f"{theme.html(quality_fa)} (<bdi>{theme.html(quality)}</bdi>)</span>",
+                _QUALITY_PILL.get(quality, "unknown"),
+            )
+        )
+        envelope = str(rec.get("envelope_status", ""))
+        envelope_fa = opt_l10n.ENVELOPE_FA.get(envelope, envelope)
+        pills.append(
+            _pill(
+                f'<span class="{theme.LANG_EN_CLASS}" dir="ltr">{theme.html(envelope)}</span>'
+                f'<span class="{theme.LANG_FA_CLASS}" dir="rtl" lang="fa">'
+                f"{theme.html(envelope_fa)} (<bdi>{theme.html(envelope)}</bdi>)</span>",
+                "alarm" if envelope == "OUTSIDE_ENVELOPE" else "ok",
+            )
         )
     stamp = f"{view.mode} · {view.timestamp}"
     return (
@@ -122,10 +148,11 @@ def _status_strip(view: Any) -> str:
 # Item 20 / NFR-6 — the unavailable panel: stated, never substituted
 # =============================================================================
 def _unavailable_panel(view: Any) -> str:
+    reason = str(view.unavailable_reason or labels.MODEL_UNAVAILABLE_STATEMENT)
     return (
         '<div class="dt-card dt-card--alt">'
         f'<h3 class="dt-title">{i18n.title_bi(labels.MODEL_UNAVAILABLE_LABEL)}</h3>'
-        f'<p>{theme.html(view.unavailable_reason or labels.MODEL_UNAVAILABLE_STATEMENT)}</p>'
+        f"<p>{opt_l10n.bi_sentence(reason)}</p>"
         "</div>"
     )
 
@@ -135,11 +162,13 @@ def _unavailable_panel(view: Any) -> str:
 # =============================================================================
 def _refusal_panel(view: Any) -> str:
     """The optimizer's refusal, in its own words. The reasons are the blocking gates' reasons."""
-    reasons = "".join(f"<li>{theme.html(reason)}</li>" for reason in view.refusal_reasons)
+    reasons = "".join(
+        f"<li>{opt_l10n.bi_sentence(str(reason))}</li>" for reason in view.refusal_reasons
+    )
     return (
         '<div class="dt-card dt-card--alt" data-role="refusal">'
         f'<h3 class="dt-title">{i18n.title_bi(labels.NO_SAFE_RECOMMENDATION)}</h3>'
-        f"<p>{theme.html(view.message)}</p>"
+        f"<p>{opt_l10n.bi_sentence(str(view.message))}</p>"
         + (f"<ul>{reasons}</ul>" if reasons else "")
         + (
             '<p class="dt-muted">'
@@ -158,19 +187,31 @@ def _refusal_panel(view: Any) -> str:
 # Item 16 (visible half) — the gates, so a refusal can be inspected
 # =============================================================================
 def _gates_table(view: Any) -> str:
-    """Every gate's verdict; blocking gates are marked. This is the audit trail of a refusal."""
+    """Every gate's verdict; blocking gates are marked. This is the audit trail of a refusal.
+
+    The gate name is a canonical identifier (kept verbatim); the state pill and the reason
+    sentence render bilingual — the state through :mod:`opt_l10n`'s dictionary with the canonical
+    value as the ``<bdi>``-isolated secondary reference, the reason through the anchored sentence
+    translator with its English fallback.
+    """
     rows = []
     for gate in view.gates:
         state = str(gate.get("state", ""))
-        reason = str(gate.get("reason", ""))
+        state_fa = opt_l10n.GATE_STATE_FA.get(state, state)
         blocking = bool(gate.get("blocking"))
-        state_cell = (
-            _pill(f"blocking · {state}", "alarm") if blocking else _pill(state, "ok")
+        state_text = (
+            f'<span class="{theme.LANG_EN_CLASS}" dir="ltr">'
+            f"{theme.html(f'blocking · {state}') if blocking else theme.html(state)}"
+            f"</span>"
+            f'<span class="{theme.LANG_FA_CLASS}" dir="rtl" lang="fa">'
+            f"{theme.html(opt_l10n.BLOCKING_FA + ' · ' + state_fa) if blocking else theme.html(state_fa)}"
+            f" (<bdi>{theme.html(state)}</bdi>)</span>"
         )
+        state_cell = _pill(state_text, "alarm" if blocking else "ok")
         rows.append(
             f"<tr><td>{theme.html(gate.get('gate', ''))}</td>"
             f"<td>{state_cell}</td>"
-            f"<td>{theme.html(reason)}</td></tr>"
+            f"<td>{opt_l10n.bi_sentence(str(gate.get('reason', '')))}</td></tr>"
         )
     return (
         '<div class="dt-card">'
@@ -238,30 +279,46 @@ def _recommendation_card(rec: Mapping[str, Any], fmt: Any) -> str:
 
     ``rec`` is ``Recommendation.describe()`` verbatim; nothing here recomputes an impact (the
     deltas and daily totals are the optimizer's own). The banner, when the payload carries one,
-    is the fixed PRD 14.3/16.1 experimental-mode banner in its mandated wording.
+    is the fixed PRD 14.3/16.1 experimental-mode banner in its mandated wording. The dynamic
+    payload sentences (``reason``, quality gloss, banner, caveat) render as bilingual pairs via
+    :func:`opt_l10n.bi_sentence` — the frozen layer's English verbatim on one side, its Persian
+    display form on the other; a shape the translator does not recognise falls back to English,
+    never a guess.
     """
     quality = str(rec.get("recommendation_quality", ""))
-    gloss = " ".join(
-        theme.html(text)
-        for text in (rec.get("quality_description", ""), rec.get("quality_reason", ""))
+    gloss_parts = [
+        str(text) for text in (rec.get("quality_description", ""), rec.get("quality_reason", ""))
         if text
+    ]
+    # ``_quality_reason`` opens with the same gloss sentence ``quality_description`` already
+    # carries, so the joined gloss would state it twice. Drop a leading exact repeat (a display
+    # dedupe — both languages read one gloss, and the frozen payload itself is untouched).
+    while len(gloss_parts) > 1 and gloss_parts[1].startswith(gloss_parts[0]):
+        gloss_parts = [gloss_parts[0], gloss_parts[1][len(gloss_parts[0]):].lstrip("; ").lstrip()]
+        if not gloss_parts[1]:
+            gloss_parts.pop()
+    gloss_en = "; ".join(part for part in gloss_parts if part)
+    gloss_html = (
+        f'<p class="dt-muted">{opt_l10n.bi_sentence(gloss_en)}</p>' if gloss_en else ""
     )
     banner = str(rec.get("banner", "") or "")
     banner_html = (
-        f'<div class="dt-banner dt-banner--warn">{theme.html(banner)}</div>' if banner else ""
+        f'<div class="dt-banner dt-banner--warn">{opt_l10n.bi_sentence(banner)}</div>'
+        if banner
+        else ""
     )
     impact = rec.get("expected_impact")
     impact_html = _impact_table(impact, fmt) if isinstance(impact, Mapping) else ""
     caveat = str(impact.get("caveat", "")) if isinstance(impact, Mapping) else ""
     caveat_html = (
-        f'<div class="dt-banner">{theme.html(caveat)}</div>' if caveat else ""
+        f'<div class="dt-banner">{opt_l10n.bi_sentence(caveat)}</div>' if caveat else ""
     )
     return (
         '<div class="dt-card" data-role="recommendation">'
         f'<h3 class="dt-title">{i18n.title_bi(labels.AI_RECOMMENDATION_LABEL)} — '
-        f'{theme.html(rec.get("label", ""))}</h3>'
-        f'<p>{theme.html(rec.get("reason", ""))}</p>'
-        + (f'<p class="dt-muted">{gloss}</p>' if gloss else "")
+        f"{opt_l10n.bi_sentence(str(rec.get('label', '')))}</h3>"
+        f"<p>{opt_l10n.bi_sentence(str(rec.get('reason', '')))}</p>"
+        + gloss_html
         + banner_html
         + f'<h3 class="dt-title">{i18n.title_bi("Recommended setpoints")}</h3>'
         + _setpoints_table(rec, fmt)
@@ -286,7 +343,8 @@ def _baselines_table(baselines: Mapping[str, Any], fmt: Any) -> str:
     measured or simulated values; a row that could not be built spans the metric columns with
     ``UNAVAILABLE_ROW_TEXT`` plus the row's own ``detail`` reason — never a zero or a blank. The
     standing caveat is the payload's own (``SIMULATED_SAVING_CAVEAT`` as the frozen layer
-    serialized it).
+    serialized it). Row titles, details and sources render bilingual through the display-layer
+    translator (:mod:`opt_l10n`); the metric column heads are canonical tags and stay verbatim.
     """
     metrics = [str(tag) for tag in baselines.get("metrics", ())]
     head = "".join(f"<th>{theme.html(tag)}</th>" for tag in metrics)
@@ -295,11 +353,11 @@ def _baselines_table(baselines: Mapping[str, Any], fmt: Any) -> str:
         title = f"{row.get('title', '')}"
         detail = str(row.get("detail", "") or "")
         title_cell = (
-            f"<th>{theme.html(title)}"
-            + (f'<br><span class="dt-muted">{theme.html(detail)}</span>' if detail else "")
+            f"<th>{opt_l10n.bi_sentence(title)}"
+            + (f'<br><span class="dt-muted">{opt_l10n.bi_sentence(detail)}</span>' if detail else "")
             + "</th>"
         )
-        source_cell = f'<td class="dt-muted">{theme.html(row.get("source", ""))}</td>'
+        source_cell = f'<td class="dt-muted">{opt_l10n.bi_sentence(str(row.get("source", "")))}</td>'
         if row.get("available"):
             values = "".join(
                 f'<td class="dt-num">{_num(row.get("metrics", {}).get(tag), fmt)}</td>'
@@ -309,14 +367,15 @@ def _baselines_table(baselines: Mapping[str, Any], fmt: Any) -> str:
         else:
             body_rows.append(
                 f'<tr>{title_cell}<td class="dt-muted" colspan="{max(len(metrics), 1)}">'
-                f"{theme.html(UNAVAILABLE_ROW_TEXT)} — {theme.html(detail)}</td></tr>"
+                f'{opt_l10n.bi_sentence(UNAVAILABLE_ROW_TEXT)} — {opt_l10n.bi_sentence(detail)}'
+                "</td></tr>"
             )
     caveat = str(baselines.get("caveat", "") or "")
     return (
         '<table class="dt-table"><thead>'
         f'<tr><th>{i18n.title_bi("Baseline (PRD 14.5)")}</th><th>{i18n.title_bi("Source")}</th>'
         f"{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
-        + (f'<div class="dt-banner">{theme.html(caveat)}</div>' if caveat else "")
+        + (f'<div class="dt-banner">{opt_l10n.bi_sentence(caveat)}</div>' if caveat else "")
     )
 
 
@@ -334,7 +393,7 @@ def _baselines_section(baselines: Mapping[str, Any] | None, fmt: Any) -> str:
         )
     missing = ", ".join(str(name) for name in baselines.get("missing", ()))
     note = (
-        f'<p class="dt-muted">{i18n.title_bi("Missing rows")}: {theme.html(missing)}.</p>'
+        f'<p class="dt-muted">{i18n.title_bi("Missing rows")}: <bdi>{theme.html(missing)}</bdi>.</p>'
         if missing
         else ""
     )
@@ -456,8 +515,8 @@ def _horizon_table(view: Any, fmt: Any) -> str:
                     else MISSING_ENTRY_TEXT
                 )
                 cells.append(
-                    f'<td class="dt-muted">{theme.html(UNAVAILABLE_ROW_TEXT)} — '
-                    f"{theme.html(reason)}</td>"
+                    f'<td class="dt-muted">{opt_l10n.bi_sentence(UNAVAILABLE_ROW_TEXT)} — '
+                    f"{opt_l10n.bi_sentence(reason)}</td>"
                 )
             else:
                 cells.append(_prediction_cell(entry, fmt))
@@ -537,6 +596,6 @@ def render_optimization(model: Any, *, settings: Any, theme_name: str = theme.DA
         '<div class="dt-opt">'
         f"{_status_strip(view)}"
         f"{''.join(cards)}"
-        f'<div class="dt-banner">{theme.html(labels.NO_PLANT_CONNECTION_STATEMENT)}</div>'
+        f'<div class="dt-banner">{opt_l10n.bi_sentence(labels.NO_PLANT_CONNECTION_STATEMENT)}</div>'
         "</div></div>"
     )

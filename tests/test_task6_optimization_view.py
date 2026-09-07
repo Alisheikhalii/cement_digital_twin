@@ -304,8 +304,13 @@ def test_unavailable_baseline_row_shows_its_reason_not_a_number(
     assert optimization_view.UNAVAILABLE_ROW_TEXT in html
     assert UNAVAILABLE_ROW_DETAIL in html
     # The unavailable row's metric cells are one spanning "unavailable — <reason>" cell; the
-    # honest absence marker, not a zero substituted into a metric column.
-    assert f'{optimization_view.UNAVAILABLE_ROW_TEXT} — {UNAVAILABLE_ROW_DETAIL}' in html
+    # honest absence marker, not a zero substituted into a metric column. Since the bilingual
+    # wave each word renders as an element pair, so the English side is the ``dt-en`` span.
+    assert (
+        f'<span class="dt-en" dir="ltr">{optimization_view.UNAVAILABLE_ROW_TEXT}</span>'
+        f'<span class="dt-fa" dir="rtl" lang="fa">در دسترس نیست</span> — '
+        f'<span class="dt-en" dir="ltr">{UNAVAILABLE_ROW_DETAIL}</span>'
+    ) in html
 
 
 def test_missing_row_names_are_summarised(settings: DashboardSettings) -> None:
@@ -438,8 +443,13 @@ def test_missing_horizon_cells_show_the_gates_reason_not_a_number(
     """A (target, horizon) with no trained Model A shows unavailable plus the frozen layer's own
     account of why — the model-availability gate's missing_models — never a zero or a blank."""
     html = optimization_view.render_optimization(_model(_view()), settings=settings)
+    # A (target, horizon) with no trained Model A shows unavailable plus the frozen layer's own
+    # account of why — the model-availability gate's missing_models — never a zero or a blank.
+    # Since the bilingual wave each word renders as an element pair (English side = ``dt-en``).
     assert (
-        f"{optimization_view.UNAVAILABLE_ROW_TEXT} — {optimization_view.MISSING_MODEL_TEXT}"
+        f'<span class="dt-en" dir="ltr">{optimization_view.UNAVAILABLE_ROW_TEXT}</span>'
+        f'<span class="dt-fa" dir="rtl" lang="fa">در دسترس نیست</span> — '
+        f'<span class="dt-en" dir="ltr">{optimization_view.MISSING_MODEL_TEXT}</span>'
         in html
     )
     # Both gate-recorded gaps are cells in the grid; the target's other horizons still show.

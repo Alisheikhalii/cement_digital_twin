@@ -306,14 +306,16 @@ GUIDE_BLOCKS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
                 "پنل‌ها و برچسب‌ها همه تغییر می‌کنند.",
             ),
             (
-                "2. Start the simulated playback with the Play button in the playback bar: the "
+                "2. The simulated playback starts by itself when the document is opened: the "
                 "plant clock, values and status colours advance through a pre-recorded "
-                "simulation. Speed can be set to 1x, 2x or 4x; Pause holds; Reset returns to "
-                "the first minute.",
-                "۲. پخش شبیه‌سازی‌شده را با دکمهٔ Play در نوار پخش آغاز کنید: ساعت کارخانه، "
-                "مقادیر و رنگ وضعیت‌ها در طول یک شبیه‌سازی از پیش ضبط‌شده پیش می‌روند. سرعت "
-                "را می‌توان روی ۱x، ۲x یا ۴x گذاشت؛ Pause نگه می‌دارد؛ Reset به دقیقهٔ اول "
-                "برمی‌گردد.",
+                "simulation, loop back to the first minute at the end, and keep going. Speed "
+                "can be set to 1x, 2x or 4x; Pause holds; Play resumes; Reset returns to the "
+                "first minute and, while playing, immediately continues from there.",
+                "۲. پخش شبیه‌سازی‌شده با باز شدن سند به‌طور خودکار آغاز می‌شود: ساعت کارخانه، "
+                "مقادیر و رنگ وضعیت‌ها در طول یک شبیه‌سازی از پیش ضبط‌شده پیش می‌روند، در پایان "
+                "به دقیقهٔ اول بازمی‌گردند و ادامه می‌یابند. سرعت را می‌توان روی ۱x، ۲x یا ۴x "
+                "گذاشت؛ Pause نگه می‌دارد؛ Play ادامه می‌دهد؛ Reset به دقیقهٔ اول برمی‌گردد و "
+                "در حالت پخش بلافاصله از همان‌جا ادامه می‌دهد.",
             ),
             (
                 "3. Explore the views with the tabs above — from the plant overview to the "
@@ -643,6 +645,15 @@ def _shell_script(timeline_json: str) -> str:
     ``Math.random``, no network, no library: the same embedded data replays identically every
     time. The ``body.ot-js`` class is added only by this script, so with scripting disabled
     every panel remains visible and the document degrades to one long, complete page.
+
+    The executive demo's transport contract: playback **starts on its own** the moment the
+    document opens, and when the final tick is reached it wraps to tick 0 and keeps going —
+    an unattended loop a presenter never has to drive. ``otPlaying`` doubles as the autoplay
+    state: it is on from load, stays on across the wrap, and only a manual Pause turns it off
+    (a manual Play turns it back on). Reset honours it — while playing it returns to tick 0
+    and immediately resumes, so Reset is never required to keep the demo running; while paused
+    it holds at tick 0 as before. Manual Play at the end of the timeline restarts from tick 0
+    rather than doing nothing, so the loop is reachable by hand too.
     """
     return (
         "<script>\n"
@@ -692,7 +703,7 @@ def _shell_script(timeline_json: str) -> str:
         "  }\n"
         "}\n"
         "function otFrame(){\n"
-        "  if(otIndex>=otTicks.length-1){otPause();return;}\n"
+        "  if(otIndex>=otTicks.length-1){otIndex=-1;}\n"
         "  otIndex++;otApply(otTicks[otIndex]);otClockText();otProgress();\n"
         "}\n"
         "function otProgress(){\n"
@@ -705,7 +716,9 @@ def _shell_script(timeline_json: str) -> str:
         "}\n"
         "function otTogglePlay(){if(otPlaying){otPause();}else{otPlay();}}\n"
         "function otPlay(){\n"
-        "  if(!otTicks.length||otIndex>=otTicks.length-1){return;}\n"
+        "  if(!otTicks.length){return;}\n"
+        "  if(otIndex>=otTicks.length-1){"
+        "otIndex=0;otApply(otTicks[0]);otClockText();}\n"
         "  otPlaying=true;\n"
         '  if(otTimer){clearInterval(otTimer);}\n'
         '  otTimer=setInterval(otFrame,OT_BEAT_MS/otSpeed);\n'
@@ -717,9 +730,9 @@ def _shell_script(timeline_json: str) -> str:
         "  otProgress();\n"
         "}\n"
         "function otResetPlayback(){\n"
-        "  otPause();\n"
         "  if(!otTicks.length){return;}\n"
-        "  otIndex=0;otApply(otTicks[0]);otClockText();otProgress();\n"
+        "  otIndex=0;otApply(otTicks[0]);otClockText();\n"
+        "  if(otPlaying){otPlay();}else{otPause();}\n"
         "}\n"
         "function otSetSpeed(speed){\n"
         "  otSpeed=speed;\n"
@@ -731,6 +744,10 @@ def _shell_script(timeline_json: str) -> str:
         'document.body.classList.add("ot-js");\n'
         'if(otTicks.length){otApply(otTicks[0]);}\n'
         "otClockText();otProgress();\n"
+        # autoplay: the demo starts itself, and loops, the moment the document opens. Only a
+        # timeline that can move (>1 tick) auto-starts; a single-frame timeline has nothing to
+        # advance, so it stays on its opening frame with the controls honest and unpressed.
+        "if(otTicks.length>1){otPlay();}\n"
         'otShowTab("presentation");\n'
         "</script>"
     )

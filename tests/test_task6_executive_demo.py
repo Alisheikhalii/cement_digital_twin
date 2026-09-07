@@ -338,7 +338,7 @@ def test_honesty_the_disclosure_is_in_the_presentation_landing_tab(document: str
     # the three mandated steps, bilingual: language, playback, tabs
     for needle in (
         "Select the language", "زبان را",  # step 1
-        "Start the simulated playback", "پخش شبیه‌سازی‌شده",  # step 2
+        "starts by itself", "به‌طور خودکار آغاز",  # step 2 (autoplay — the demo starts itself)
         "Explore the views with the tabs", "زبانه‌های بالا",  # step 3
     ):
         assert theme.html(needle) in guide, f"how-to step missing: {needle}"
